@@ -23,9 +23,9 @@ export function subscribeSpeechLevel(fn: (n: number) => void) {
 function startEnvelope() {
   stopEnvelope();
   const tick = () => {
-    const burst = Math.random() < 0.18 ? 0.55 + Math.random() * 0.45 : 0.08 + Math.random() * 0.22;
+    const burst = Math.random() < 0.18 ? 0.45 + Math.random() * 0.4 : 0.06 + Math.random() * 0.18;
     setSpeechLevel(burst);
-    envelopeTimer = window.setTimeout(tick, 70 + Math.random() * 90);
+    envelopeTimer = window.setTimeout(tick, 90 + Math.random() * 110);
   };
   tick();
 }
@@ -50,26 +50,54 @@ export function stopVoice() {
   }
 }
 
-function pickVoice(): SpeechSynthesisVoice | undefined {
-  const voices = window.speechSynthesis?.getVoices?.() ?? [];
-  const prefer = voices.find(
-    (v) => /en[-_]US/i.test(v.lang) && /samantha|karen|moira|daniel|alex|martha|serena/i.test(v.name),
-  );
-  return prefer ?? voices.find((v) => v.lang.startsWith("en")) ?? voices[0];
+function scoreVoice(v: SpeechSynthesisVoice) {
+  const n = v.name.toLowerCase();
+  const lang = v.lang.toLowerCase();
+  let s = 0;
+  if (lang.startsWith("en")) s += 12;
+  if (/en-us|en_us|en-gb|en-au/.test(lang)) s += 6;
+  if (/samantha|nicky|aaron|zoe|allison|ava|susan|karen|moira|serena/.test(n)) s += 40;
+  if (/enhanced|premium|natural|siri|neural/.test(n)) s += 18;
+  if (/\balex\b|\bdaniel\b|\btom\b/.test(n)) s += 10;
+  if (/compact|novelty|whisper|zarvox|trinoids|bells|boing|bubbles|cellos|bad news|good news|albert|bahh|pipe|organ/.test(n)) {
+    s -= 80;
+  }
+  if (v.localService) s += 8;
+  return s;
 }
 
-export function speakLocal(text: string): Promise<void> {
-  stopVoice();
+function pickVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined {
+  if (!voices.length) return undefined;
+  const ranked = [...voices].sort((a, b) => scoreVoice(b) - scoreVoice(a));
+  const best = ranked[0];
+  return best && scoreVoice(best) > 0 ? best : undefined;
+}
+
+function readyVoices(): Promise<SpeechSynthesisVoice[]> {
+  const synth = window.speechSynthesis;
+  const now = synth.getVoices();
+  if (now.length) return Promise.resolve(now);
+  return new Promise((resolve) => {
+    const finish = () => resolve(synth.getVoices());
+    synth.addEventListener("voiceschanged", finish, { once: true });
+    window.setTimeout(finish, 500);
+  });
+}
+
+export async function speakLocal(text: string): Promise<void> {
   const spoken = text.replace(/\s+/g, " ").trim();
   if (!spoken || typeof window === "undefined" || !window.speechSynthesis) {
-    return Promise.resolve();
+    return;
   }
+  stopVoice();
+  await new Promise((r) => window.setTimeout(r, 60));
+  const voices = await readyVoices();
+  const voice = pickVoice(voices);
   return new Promise((resolve) => {
     const utter = new SpeechSynthesisUtterance(spoken);
-    utter.rate = 0.92;
-    utter.pitch = 0.88;
-    utter.volume = 1;
-    const voice = pickVoice();
+    utter.rate = 0.98;
+    utter.pitch = 1;
+    utter.lang = voice?.lang || "en-US";
     if (voice) utter.voice = voice;
     startEnvelope();
     utter.onend = () => {
@@ -109,7 +137,8 @@ export function playAudioBytes(base64: string, mime = "audio/mpeg"): Promise<voi
     const done = () => finish(url, resolve);
     audio.onended = done;
     audio.onerror = done;
-    void audio.play()
+    void audio
+      .play()
       .then(async () => {
         try {
           ctx = new AudioContext();

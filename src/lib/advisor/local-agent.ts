@@ -11,6 +11,9 @@ export type AdvisorReply = {
 export const NEX_GREETING =
   "Operator. Nex on desk. The local library is online — Investopedia, Fidelity Learning Center, SEC Investor.gov, Vanguard, and CFA Institute. I will not pick stocks. Ask about process, risk, or what a model is allowed to claim.";
 
+export const NEX_GREETING_SPOKEN =
+  "Operator. Nex on desk. Local library is live. I will not pick stocks. Ask about process, risk, or what a model is allowed to claim.";
+
 function address(text: string) {
   const t = text.trim();
   if (!t) return `Operator.`;
@@ -35,11 +38,17 @@ function unique(entries: CorpusEntry[]) {
 }
 
 export function spokenFromReply(text: string) {
-  const parts = text.split(/\n\n/).map((p) => p.trim()).filter(Boolean);
-  const first = parts[0] ?? text;
-  const last = parts.length > 1 ? parts[parts.length - 1]! : "";
-  const clip = `${first} ${last !== first ? last : ""}`.replace(/\s+/g, " ").trim();
-  return clip.slice(0, 420);
+  const clean = text.replace(/\s+/g, " ").trim();
+  const sentences = clean.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [clean];
+  let out = "";
+  for (const raw of sentences) {
+    const s = raw.trim();
+    if (!s) continue;
+    if (out && out.length + s.length > 360) break;
+    out = out ? `${out} ${s}` : s;
+    if (out.length > 220) break;
+  }
+  return out || clean;
 }
 
 export function localAdvise(

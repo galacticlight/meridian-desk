@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { NexPortrait } from "@/components/nex/nex-portrait";
 import { Button } from "@/components/ui/button";
-import { askNex, speakNex } from "@/lib/advisor/api";
+import { askNex } from "@/lib/advisor/api";
 import {
   NEX_GREETING,
+  NEX_GREETING_SPOKEN,
   localAdvise,
   spokenFromReply,
   type AdvisorReply,
 } from "@/lib/advisor/local-agent";
-import { playAudioBytes, speakLocal, stopVoice } from "@/lib/advisor/voice";
+import { speakLocal, stopVoice } from "@/lib/advisor/voice";
 import type { RiskSnapshot, Series } from "@/lib/market/types";
 import { formatMoney, formatPct } from "@/lib/utils";
 
@@ -49,33 +50,20 @@ export function NexPanel({
     return `${series.ticker} ${series.name} last ${formatMoney(risk.last)} change ${formatPct(risk.change)} vol ${formatPct(risk.vol, 1)} EWMA ${formatPct(risk.ewmaVol, 1)} Sharpe ${risk.sharpe.toFixed(2)} regime ${risk.regime} source ${series.source}`;
   }, [series, risk]);
 
-  async function vocalize(text: string, studio: boolean) {
+  async function vocalize(text: string) {
     if (!voice) {
       setMood("idle");
       return;
     }
     setMood("speak");
-    const line = spokenFromReply(text);
-    if (studio) {
-      try {
-        const remote = await speakNex({ data: { text: line } });
-        if (remote.ok) {
-          await playAudioBytes(remote.audio, remote.mime);
-          setMood("idle");
-          return;
-        }
-      } catch {
-        /* device speech below */
-      }
-    }
-    await speakLocal(line);
+    await speakLocal(spokenFromReply(text));
     setMood("idle");
   }
 
   function greetOnce() {
     if (greeted.current || !voice) return;
     greeted.current = true;
-    void vocalize(NEX_GREETING, false);
+    void vocalize(NEX_GREETING_SPOKEN);
   }
 
   useEffect(() => {
@@ -120,7 +108,7 @@ export function NexPanel({
     }
     setThread((t) => [...t, { role: "nex", ...reply }]);
     setBusy(false);
-    await vocalize(reply.text, true);
+    await vocalize(reply.text);
   }
 
   return (

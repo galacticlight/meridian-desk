@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { searchCorpus } from "./corpus.ts";
-import { NEX_GREETING, localAdvise, spokenFromReply } from "./local-agent.ts";
+import { NEX_GREETING, NEX_GREETING_SPOKEN, localAdvise, spokenFromReply } from "./local-agent.ts";
 
 describe("local Nex library", () => {
   it("retrieves allocation passages", () => {
@@ -26,6 +26,8 @@ describe("local Nex library", () => {
 
   it("greeting names Operator", () => {
     assert.match(NEX_GREETING, /^Operator\./);
-    assert.match(spokenFromReply(NEX_GREETING), /Operator/);
+    assert.match(NEX_GREETING_SPOKEN, /^Operator\./);
+    assert.match(spokenFromReply(NEX_GREETING_SPOKEN), /Operator/);
+    assert.doesNotMatch(NEX_GREETING_SPOKEN, /Investopedia/);
   });
 });

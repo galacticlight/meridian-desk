@@ -6,16 +6,46 @@ Forecasts run in the browser (GBM, GARCH-t, block bootstrap, AR(1), sequence net
 
 ## Stack
 
-React 19 · TanStack Start · Tailwind v4 · Recharts
+React 19 · TanStack Start · Tailwind v4 · Recharts · Node 22
 
-## Local development
+## Run on a Mac (Apple Silicon)
 
-```bash
-npm install
-npm run dev
-```
+1. Install **Node.js 22 LTS** from [nodejs.org](https://nodejs.org) — choose the macOS ARM64 installer.
+2. Confirm in Terminal:
 
-The app listens on port 8080.
+   ```bash
+   node -v
+   ```
+
+   You want `v22.x.x`.
+
+3. Clone the desk:
+
+   ```bash
+   git clone https://github.com/galacticlight/meridian-desk.git
+   cd meridian-desk
+   ```
+
+4. Install dependencies (first run only):
+
+   ```bash
+   npm install
+   ```
+
+5. Start the laboratory:
+
+   ```bash
+   npm run dev
+   ```
+
+6. Open the address Terminal prints (typically `http://localhost:8080`).
+7. Unmute the Mac and click the page once so Nex can greet you as **Operator**. Use **Voice on** in Nex’s panel to speak replies. **Voice off** silences the companion.
+
+Safari and Chrome on Apple Silicon both work. Keep Terminal open while you use the desk.
+
+### Optional studio voice
+
+Nex’s default voice is the Mac’s own speech engine (offline). If you later add an xAI API key to the server environment, **Ask** can use studio TTS instead, still falling back to the Mac voice if the studio call is unavailable.
 
 ## Scripts
 

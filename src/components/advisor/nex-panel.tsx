@@ -1,8 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { NexPortrait } from "@/components/nex/nex-portrait";
 import { Button } from "@/components/ui/button";
-import { askNex } from "@/lib/advisor/api";
-import { localAdvise, type AdvisorReply } from "@/lib/advisor/local-agent";
+import { askNex, speakNex } from "@/lib/advisor/api";
+import {
+  NEX_GREETING,
+  localAdvise,
+  spokenFromReply,
+  type AdvisorReply,
+} from "@/lib/advisor/local-agent";
+import { playAudioBytes, speakLocal, stopVoice } from "@/lib/advisor/voice";
 import type { RiskSnapshot, Series } from "@/lib/market/types";
 import { formatMoney, formatPct } from "@/lib/utils";
 
@@ -26,12 +32,14 @@ export function NexPanel({
   const [mood, setMood] = useState<Mood>("idle");
   const [busy, setBusy] = useState(false);
   const [live, setLive] = useState(false);
+  const [voice, setVoice] = useState(true);
+  const greeted = useRef(false);
   const [thread, setThread] = useState<
     { role: "you" | "nex"; text: string; citations?: AdvisorReply["citations"]; mode?: AdvisorReply["mode"] }[]
   >([
     {
       role: "nex",
-      text: "I am Nex. I run from a local library on this device — Investopedia, Fidelity Learning Center, SEC Investor.gov, Vanguard, and CFA Institute. I will not pick stocks. Ask about process, risk, or what a model is allowed to claim.",
+      text: NEX_GREETING,
       mode: "local",
     },
   ]);
@@ -41,6 +49,56 @@ export function NexPanel({
     return `${series.ticker} ${series.name} last ${formatMoney(risk.last)} change ${formatPct(risk.change)} vol ${formatPct(risk.vol, 1)} EWMA ${formatPct(risk.ewmaVol, 1)} Sharpe ${risk.sharpe.toFixed(2)} regime ${risk.regime} source ${series.source}`;
   }, [series, risk]);
 
+  async function vocalize(text: string, studio: boolean) {
+    if (!voice) {
+      setMood("idle");
+      return;
+    }
+    setMood("speak");
+    const line = spokenFromReply(text);
+    if (studio) {
+      try {
+        const remote = await speakNex({ data: { text: line } });
+        if (remote.ok) {
+          await playAudioBytes(remote.audio, remote.mime);
+          setMood("idle");
+          return;
+        }
+      } catch {
+        /* device speech below */
+      }
+    }
+    await speakLocal(line);
+    setMood("idle");
+  }
+
+  function greetOnce() {
+    if (greeted.current || !voice) return;
+    greeted.current = true;
+    void vocalize(NEX_GREETING, false);
+  }
+
+  useEffect(() => {
+    if (!voice) return;
+    const kick = () => greetOnce();
+    const synth = window.speechSynthesis;
+    if (synth?.getVoices().length) {
+      kick();
+    } else {
+      synth?.addEventListener("voiceschanged", kick, { once: true });
+    }
+    const onPointer = () => kick();
+    window.addEventListener("pointerdown", onPointer, { once: true });
+    return () => {
+      synth?.removeEventListener("voiceschanged", kick);
+      window.removeEventListener("pointerdown", onPointer);
+    };
+  }, [voice]);
+
+  useEffect(() => {
+    if (!voice) stopVoice();
+  }, [voice]);
+
   async function submit(text: string) {
     const q = text.trim();
     if (!q || busy) return;
@@ -49,37 +107,20 @@ export function NexPanel({
     setBusy(true);
     setMood("think");
     const local = localAdvise(q, series, risk);
-    if (!live) {
-      setMood("speak");
-      setThread((t) => [...t, { role: "nex", ...local }]);
-      setBusy(false);
-      window.setTimeout(() => setMood("idle"), 2400);
-      return;
-    }
-    try {
-      const remote = await askNex({ data: { query: q, context } });
-      if (remote.ok) {
-        setMood("speak");
-        setThread((t) => [
-          ...t,
-          {
-            role: "nex",
-            text: remote.text,
-            citations: remote.citations,
-            mode: "grok",
-          },
-        ]);
-      } else {
-        setMood("speak");
-        setThread((t) => [...t, { role: "nex", ...local }]);
+    let reply: AdvisorReply = local;
+    if (live) {
+      try {
+        const remote = await askNex({ data: { query: q, context } });
+        if (remote.ok) {
+          reply = { text: remote.text, citations: remote.citations, mode: "grok" };
+        }
+      } catch {
+        reply = local;
       }
-    } catch {
-      setMood("speak");
-      setThread((t) => [...t, { role: "nex", ...local }]);
-    } finally {
-      setBusy(false);
-      window.setTimeout(() => setMood("idle"), 2400);
     }
+    setThread((t) => [...t, { role: "nex", ...reply }]);
+    setBusy(false);
+    await vocalize(reply.text, true);
   }
 
   return (
@@ -91,7 +132,7 @@ export function NexPanel({
             <div>
               <p className="font-display text-xl leading-none">Nex</p>
               <p className="mt-1 text-xs text-muted">
-                {busy ? "Consulting the library" : "Local research companion"}
+                {busy ? "Consulting the library" : "Research companion · Operator"}
               </p>
             </div>
             <span className="rounded-full border border-border px-2.5 py-1 text-[10px] uppercase tracking-wide text-subtle">
@@ -105,20 +146,33 @@ export function NexPanel({
         <p className="text-[11px] uppercase tracking-wide text-subtle">
           {live ? "Live model when available" : "Offline library"}
         </p>
-        <button
-          type="button"
-          onClick={() => setLive((v) => !v)}
-          className="h-8 rounded-full border border-border px-3 text-xs text-muted hover:text-fg"
-        >
-          {live ? "Use local only" : "Allow live model"}
-        </button>
+        <div className="flex gap-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              const next = !voice;
+              setVoice(next);
+              if (!next) stopVoice();
+            }}
+            className="h-8 rounded-full border border-border px-3 text-xs text-muted hover:text-fg"
+          >
+            {voice ? "Voice on" : "Voice off"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setLive((v) => !v)}
+            className="h-8 rounded-full border border-border px-3 text-xs text-muted hover:text-fg"
+          >
+            {live ? "Use local only" : "Allow live model"}
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
         {thread.map((m, i) => (
           <div key={i} className={m.role === "you" ? "ml-6" : "mr-2"}>
             <p className="text-[10px] uppercase tracking-wide text-subtle">
-              {m.role === "you" ? "You" : m.mode === "grok" ? "Nex · live model" : "Nex · local"}
+              {m.role === "you" ? "Operator" : m.mode === "grok" ? "Nex · live model" : "Nex · local"}
             </p>
             <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-fg/90">{m.text}</p>
             {m.citations?.length ? (
@@ -167,7 +221,7 @@ export function NexPanel({
               setQuery(e.target.value);
               if (e.target.value) setMood("listen");
             }}
-            placeholder="Ask about process, not picks"
+            placeholder="Ask Nex, Operator"
             className="h-11 min-w-0 flex-1 rounded-md border border-border bg-bg px-3 text-sm text-fg placeholder:text-subtle focus:border-border-strong focus:outline-none"
             suppressHydrationWarning
           />

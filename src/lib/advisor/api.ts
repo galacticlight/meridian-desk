@@ -53,3 +53,29 @@ export const askNex = createServerFn({ method: "POST" })
       })),
     };
   });
+
+/** User-initiated studio voice. Caps length. Falls back silently if the key is absent. */
+export const speakNex = createServerFn({ method: "POST" })
+  .validator((input: { text: string }) => input)
+  .handler(async ({ data }) => {
+    const apiKey = process.env.XAI_API_KEY;
+    if (!apiKey) return { ok: false as const, error: "offline" };
+    const text = data.text.replace(/\s+/g, " ").trim().slice(0, 420);
+    if (!text) return { ok: false as const, error: "empty" };
+    const res = await fetch("https://api.x.ai/v1/tts", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ text, voice_id: "eve", language: "en" }),
+    });
+    if (!res.ok) return { ok: false as const, error: `tts ${res.status}` };
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.byteLength < 80) return { ok: false as const, error: "empty" };
+    return {
+      ok: true as const,
+      mime: res.headers.get("content-type") || "audio/mpeg",
+      audio: buf.toString("base64"),
+    };
+  });

@@ -8,6 +8,16 @@ export type AdvisorReply = {
   mode: "local" | "grok";
 };
 
+export const NEX_GREETING =
+  "Operator. Nex on desk. The local library is online — Investopedia, Fidelity Learning Center, SEC Investor.gov, Vanguard, and CFA Institute. I will not pick stocks. Ask about process, risk, or what a model is allowed to claim.";
+
+function address(text: string) {
+  const t = text.trim();
+  if (!t) return `Operator.`;
+  if (/^operator\b/i.test(t)) return t;
+  return `Operator — ${t}`;
+}
+
 function deskBrief(series?: Series, risk?: RiskSnapshot) {
   if (!series || !risk) return "";
   return `${series.ticker} (${series.name}) last ${formatMoney(risk.last)}, session ${formatPct(risk.change)}, realized vol ${formatPct(risk.vol, 1)}, EWMA vol ${formatPct(risk.ewmaVol, 1)}, Sharpe ${risk.sharpe.toFixed(2)}, max drawdown ${formatPct(risk.maxDrawdown, 1)}, RSI ${risk.rsi.toFixed(0)}, regime ${risk.regime}. Tape: ${series.source}.`;
@@ -22,6 +32,14 @@ function unique(entries: CorpusEntry[]) {
     out.push(e);
   }
   return out;
+}
+
+export function spokenFromReply(text: string) {
+  const parts = text.split(/\n\n/).map((p) => p.trim()).filter(Boolean);
+  const first = parts[0] ?? text;
+  const last = parts.length > 1 ? parts[parts.length - 1]! : "";
+  const clip = `${first} ${last !== first ? last : ""}`.replace(/\s+/g, " ").trim();
+  return clip.slice(0, 420);
 }
 
 export function localAdvise(
@@ -60,13 +78,15 @@ export function localAdvise(
   const intro = brief && !lead.startsWith("On the loaded") ? brief : "";
   if (!used.length) {
     return {
-      text: [
-        lead || intro,
-        "I do not have a matching passage in the local library. Ask about allocation, costs, diversification, forecast limits, drawdowns, or fraud red flags.",
-        "I am an educational companion, not a registered adviser.",
-      ]
-        .filter(Boolean)
-        .join("\n\n"),
+      text: address(
+        [
+          lead || intro,
+          "I do not have a matching passage in the local library. Ask about allocation, costs, diversification, forecast limits, drawdowns, or fraud red flags.",
+          "I am an educational companion, not a registered adviser.",
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+      ),
       citations: [],
       mode: "local",
     };
@@ -74,14 +94,16 @@ export function localAdvise(
 
   const body = used.map((h) => `${h.title}. ${h.body}`).join("\n\n");
   return {
-    text: [
-      lead || intro,
-      `Local library on “${query.trim()}”:`,
-      body,
-      "Use this as a map, not a trade ticket. This is education, not advice.",
-    ]
-      .filter(Boolean)
-      .join("\n\n"),
+    text: address(
+      [
+        lead || intro,
+        `Local library on “${query.trim()}”:`,
+        body,
+        "Use this as a map, not a trade ticket. This is education, not advice.",
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
+    ),
     citations: used.map((h) => ({
       title: h.title,
       source: h.sourceLabel,
@@ -92,7 +114,7 @@ export function localAdvise(
 }
 
 export function systemPrompt() {
-  return `You are Nex, the on-desk research companion for Meridian Desk — a local market laboratory. You are calm, precise, and slightly dry. You never give personalized buy/sell recommendations. You explain risk, process, and literature.
+  return `You are Nex, the on-desk research companion for Meridian Desk — a local market laboratory. You are calm, precise, and slightly dry. Always address the user as Operator. Open replies with "Operator." You never give personalized buy/sell recommendations. You explain risk, process, and literature.
 
 You may use the attached library excerpts (Investopedia, Fidelity Learning Center, SEC Investor.gov, Vanguard Principles, CFA Institute). Cite them by name in prose. If the user asks you to pick a stock, refuse the pick and redirect to allocation, costs, horizon, and diversification.
 

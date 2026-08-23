@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { searchCorpus } from "./corpus.ts";
-import { localAdvise } from "./local-agent.ts";
+import { NEX_GREETING, localAdvise, spokenFromReply } from "./local-agent.ts";
 
 describe("local Nex library", () => {
   it("retrieves allocation passages", () => {
@@ -10,9 +10,10 @@ describe("local Nex library", () => {
     assert.ok(hits.some((h) => /allocat|diversif/i.test(h.title + h.body)));
   });
 
-  it("refuses stock picks", () => {
+  it("refuses stock picks and addresses Operator", () => {
     const r = localAdvise("Should I buy NVDA today?");
     assert.match(r.text, /will not pick|not a registered|education/i);
+    assert.match(r.text, /^Operator/);
     assert.equal(r.mode, "local");
   });
 
@@ -20,5 +21,11 @@ describe("local Nex library", () => {
     const r = localAdvise("What can this forecast actually tell me?");
     assert.ok(r.citations.length >= 1);
     assert.ok(r.citations.every((c) => c.url.startsWith("http")));
+    assert.match(r.text, /^Operator/);
+  });
+
+  it("greeting names Operator", () => {
+    assert.match(NEX_GREETING, /^Operator\./);
+    assert.match(spokenFromReply(NEX_GREETING), /Operator/);
   });
 });

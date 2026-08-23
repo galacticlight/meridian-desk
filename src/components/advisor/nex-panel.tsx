@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { askNex, listMacVoices } from "@/lib/advisor/api";
+import { askNex, getWeather, listMacVoices } from "@/lib/advisor/api";
 import {
   NEX_GREETING,
   NEX_GREETING_SPOKEN,
@@ -9,14 +9,15 @@ import {
   type AdvisorReply,
 } from "@/lib/advisor/local-agent";
 import { speakNexVoice, stopVoice } from "@/lib/advisor/voice";
+import { isLiveQuery, isWeatherQuery } from "@/lib/advisor/weather";
 import type { Mood } from "@/components/nex/nex-portrait";
 import type { RiskSnapshot, Series } from "@/lib/market/types";
 import { formatMoney, formatPct } from "@/lib/utils";
 
 const STARTERS = [
+  "What's the weather in Seattle?",
   "Who are you?",
   "How should I think about asset allocation?",
-  "Research what volatility is doing this week.",
   "What can this forecast actually tell me?",
 ];
 
@@ -124,15 +125,15 @@ export function NexPanel({
     moodTo("think");
     const local = localAdvise(q, series, risk);
     let reply: AdvisorReply = local;
-    if (research) {
-      try {
+    try {
+      if (isWeatherQuery(q)) {
+        const wx = await getWeather({ data: { query: q } });
+        if (wx.ok) {
+          reply = { text: wx.text, citations: wx.citations, mode: wx.mode };
+        }
+      } else if (research || isLiveQuery(q)) {
         const remote = await askNex({
-          data: {
-            query: q,
-            context,
-            research: true,
-            history: thread.slice(-8),
-          },
+          data: { query: q, context, research: true, history: thread.slice(-8) },
         });
         if (remote.ok) {
           reply = {
@@ -141,9 +142,9 @@ export function NexPanel({
             mode: remote.mode ?? "research",
           };
         }
-      } catch {
-        reply = local;
       }
+    } catch {
+      reply = local;
     }
     setThread((t) => [...t, { role: "nex", ...reply }]);
     setBusy(false);
@@ -216,7 +217,7 @@ export function NexPanel({
               {m.role === "you"
                 ? "Operator"
                 : m.mode === "research"
-                  ? "Nex · web + X"
+                  ? "Nex · live"
                   : m.mode === "grok"
                     ? "Nex · live model"
                     : "Nex · local"}
@@ -268,7 +269,7 @@ export function NexPanel({
               setQuery(e.target.value);
               if (e.target.value) moodTo("listen");
             }}
-            placeholder="Talk with Nex, Operator"
+            placeholder="Ask Nex — weather, process, a lookup"
             className="h-12 min-w-0 flex-1 rounded-md border border-border bg-bg px-3 text-sm text-fg placeholder:text-subtle focus:border-border-strong focus:outline-none"
             suppressHydrationWarning
           />

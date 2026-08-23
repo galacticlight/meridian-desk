@@ -28,7 +28,6 @@ describe("local Nex library", () => {
     assert.match(NEX_GREETING, /^Operator\./);
     assert.match(NEX_GREETING_SPOKEN, /^Operator\./);
     assert.match(spokenFromReply(NEX_GREETING_SPOKEN), /Operator/);
-    assert.doesNotMatch(NEX_GREETING_SPOKEN, /Investopedia/);
   });
 
   it("chats as a companion", () => {

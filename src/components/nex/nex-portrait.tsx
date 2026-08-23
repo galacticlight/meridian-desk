@@ -1,31 +1,31 @@
-import { useEffect, useRef, useState } from "react";
-import { getSpeechLevel, subscribeSpeechLevel } from "@/lib/advisor/voice";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
 export type Mood = "idle" | "listen" | "speak" | "think";
 
-function load(src: string) {
-  const img = new Image();
-  img.src = src;
-  return img;
-}
-
-function cover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, w: number, h: number) {
-  if (!img.complete || !img.naturalWidth) return;
-  const ir = img.naturalWidth / img.naturalHeight;
-  const cr = w / h;
-  let dw = w;
-  let dh = h;
-  let dx = 0;
-  let dy = 0;
-  if (ir > cr) {
-    dw = h * ir;
-    dx = (w - dw) / 2;
-  } else {
-    dh = w / ir;
-    dy = (h - dh) / 2 - h * 0.06;
-  }
-  ctx.drawImage(img, dx, dy, dw, dh);
+function Lightning({ mood }: { mood: Mood }) {
+  return (
+    <svg
+      className="pointer-events-none absolute inset-0 h-full w-full"
+      viewBox="0 0 200 300"
+      preserveAspectRatio="xMidYMid meet"
+      aria-hidden="true"
+    >
+      <g
+        className={cn("nex-filament origin-center", mood === "think" && "opacity-50")}
+        fill="none"
+        stroke="rgba(186, 230, 232, 0.85)"
+        strokeWidth="0.7"
+        strokeLinecap="round"
+      >
+        <path d="M42 108 C70 96, 110 94, 158 108" strokeDasharray="10 18" />
+        <path d="M48 118 C80 108, 120 108, 154 120" strokeDasharray="6 14" opacity="0.7" />
+        <path d="M86 92 L92 118 L78 132 L104 148" className="nex-bolt" />
+        <path d="M128 90 L122 114 L138 128 L118 150" className="nex-bolt" />
+      </g>
+      <rect className="nex-flash" x="30" y="70" width="140" height="90" rx="28" fill="rgba(210,240,242,0.55)" />
+    </svg>
+  );
 }
 
 export function NexPortrait({
@@ -35,12 +35,7 @@ export function NexPortrait({
   mood?: Mood;
   className?: string;
 }) {
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const moodRef = useRef(mood);
-  moodRef.current = mood;
   const [reduce, setReduce] = useState(false);
-
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
     setReduce(mq.matches);
@@ -49,136 +44,39 @@ export function NexPortrait({
     return () => mq.removeEventListener("change", onChange);
   }, []);
 
-  useEffect(() => {
-    if (reduce) return;
-    const canvas = canvasRef.current;
-    const wrap = wrapRef.current;
-    if (!canvas || !wrap) return;
-    const ctx = canvas.getContext("2d", { alpha: false });
-    if (!ctx) return;
-
-    const idle = load("/nex/portrait.jpg");
-    const blinkImg = load("/nex/blink.jpg");
-    const speakImg = load("/nex/speak.jpg");
-    let alive = true;
-    let raf = 0;
-    const t0 = performance.now();
-    let blinkAmt = 0;
-    let blinkPhase: "open" | "closing" | "shut" | "opening" = "open";
-    let nextBlink = t0 + 480;
-    let phaseUntil = 0;
-    let doublePending = false;
-    let speech = getSpeechLevel();
-    const unsub = subscribeSpeechLevel((n) => {
-      speech = n;
-    });
-
-    const resize = () => {
-      const r = wrap.getBoundingClientRect();
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
-      canvas.width = Math.max(1, Math.floor(r.width * dpr));
-      canvas.height = Math.max(1, Math.floor(r.height * dpr));
-      canvas.style.width = `${r.width}px`;
-      canvas.style.height = `${r.height}px`;
-    };
-    resize();
-    const ro = new ResizeObserver(resize);
-    ro.observe(wrap);
-
-    const draw = (now: number) => {
-      if (!alive) return;
-      const t = (now - t0) / 1000;
-      const w = canvas.width;
-      const h = canvas.height;
-      const m = moodRef.current;
-
-      if (blinkPhase === "open" && now > nextBlink) {
-        blinkPhase = "closing";
-        phaseUntil = now + 110;
-        doublePending = Math.random() < 0.2;
-      } else if (blinkPhase === "closing" && now >= phaseUntil) {
-        blinkPhase = "shut";
-        phaseUntil = now + 180;
-      } else if (blinkPhase === "shut" && now >= phaseUntil) {
-        blinkPhase = "opening";
-        phaseUntil = now + 120;
-      } else if (blinkPhase === "opening" && now >= phaseUntil) {
-        blinkPhase = "open";
-        blinkAmt = 0;
-        nextBlink = now + (doublePending ? 80 + Math.random() * 70 : 1600 + Math.random() * 2800);
-        doublePending = false;
-      }
-      if (blinkPhase === "closing") blinkAmt = 1 - (phaseUntil - now) / 110;
-      else if (blinkPhase === "shut") blinkAmt = 1;
-      else if (blinkPhase === "opening") blinkAmt = (phaseUntil - now) / 120;
-      blinkAmt = Math.max(0, Math.min(1, blinkAmt));
-
-      const breathe = 0.5 * Math.sin(t * 0.7) + 0.3 * Math.sin(t * 1.17 + 1.2) + 0.2 * Math.sin(t * 0.23);
-      const scale = 1.03 + breathe * 0.01 + (m === "listen" ? 0.01 : 0);
-      const oy = breathe * h * 0.006;
-
-      ctx.fillStyle = "#0a0a0b";
-      ctx.fillRect(0, 0, w, h);
-      ctx.save();
-      ctx.translate(w / 2, h / 2 + oy);
-      ctx.scale(scale, scale);
-      ctx.translate(-w / 2, -h / 2);
-      cover(ctx, idle, w, h);
-
-      if (blinkAmt > 0.02 && blinkImg.complete) {
-        ctx.globalAlpha = blinkAmt;
-        cover(ctx, blinkImg, w, h);
-        ctx.globalAlpha = 1;
-      }
-
-      const talk =
-        m === "speak"
-          ? 0.35 + 0.65 * Math.abs(Math.sin(t * 10.2)) * (0.35 + speech)
-          : speech > 0.06
-            ? speech
-            : 0;
-      if (talk > 0.05 && speakImg.complete) {
-        ctx.globalAlpha = Math.min(0.95, talk);
-        cover(ctx, speakImg, w, h);
-        ctx.globalAlpha = 1;
-      }
-      ctx.restore();
-
-      if (m === "think") {
-        ctx.fillStyle = "rgba(8, 8, 10, 0.18)";
-        ctx.fillRect(0, 0, w, h);
-      }
-      const vig = ctx.createRadialGradient(w * 0.5, h * 0.4, h * 0.18, w * 0.5, h * 0.5, h * 0.85);
-      vig.addColorStop(0, "rgba(0,0,0,0)");
-      vig.addColorStop(1, "rgba(8,8,10,0.42)");
-      ctx.fillStyle = vig;
-      ctx.fillRect(0, 0, w, h);
-
-      raf = requestAnimationFrame(draw);
-    };
-
-    const start = () => {
-      if (!alive) return;
-      raf = requestAnimationFrame(draw);
-    };
-    if (idle.complete) start();
-    else idle.onload = start;
-
-    return () => {
-      alive = false;
-      cancelAnimationFrame(raf);
-      ro.disconnect();
-      unsub();
-    };
-  }, [reduce]);
-
   return (
-    <div ref={wrapRef} className={cn("relative overflow-hidden bg-bg", className)}>
-      {reduce ? (
-        <img src="/nex/portrait.jpg" alt="" className="h-full w-full object-cover object-top" />
-      ) : (
-        <canvas ref={canvasRef} className="h-full w-full" aria-hidden="true" />
-      )}
+    <div className={cn("relative flex h-full w-full items-center justify-center overflow-hidden bg-bg", className)}>
+      <div className="relative mx-auto flex h-full max-h-full w-full max-w-full items-center justify-center px-6 pb-24 pt-16">
+        <div className="relative aspect-[2/3] h-full max-h-full w-auto max-w-full">
+          {reduce ? (
+            <img
+              src="/nex/portrait.jpg"
+              alt=""
+              className="h-full w-full object-contain object-center"
+            />
+          ) : (
+            <video
+              className="h-full w-full object-contain object-center"
+              src="/nex/idle.mp4?v=2"
+              poster="/nex/portrait.jpg"
+              autoPlay
+              muted
+              loop
+              playsInline
+              aria-hidden="true"
+            />
+          )}
+          {reduce ? null : <Lightning mood={mood} />}
+          <div
+            className={cn(
+              "pointer-events-none absolute inset-0",
+              mood === "listen" && "shadow-[inset_0_0_28px_rgba(197,201,209,0.22)]",
+              mood === "speak" && "shadow-[inset_0_-24px_32px_rgba(197,201,209,0.16)]",
+              mood === "think" && "bg-bg/20",
+            )}
+          />
+        </div>
+      </div>
       <span className="sr-only">Nex, local research companion</span>
     </div>
   );

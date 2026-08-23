@@ -3,6 +3,88 @@ import { CORPUS, searchCorpus } from "./corpus";
 import { systemPrompt } from "./local-agent";
 import { listInstalledMacVoices, renderMacSpeech } from "./mac-say";
 import { extractResponse, type ChatTurn } from "./response";
+import { formatWeather, parsePlace } from "./weather";
+
+export const getWeather = createServerFn({ method: "POST" })
+  .validator((input: { query: string }) => input)
+  .handler(async ({ data }) => {
+    const place = parsePlace(data.query) ?? "Seattle";
+    const assumed = !parsePlace(data.query);
+    const headers = { "User-Agent": "NexCompanion/1.0" };
+    const wttr = await fetch(
+      `https://wttr.in/${encodeURIComponent(place)}?format=j1`,
+      { headers },
+    );
+    if (wttr.ok) {
+      const body = (await wttr.json()) as {
+        current_condition?: {
+          temp_C: string;
+          humidity: string;
+          windspeedKmph: string;
+          weatherDesc?: { value: string }[];
+        }[];
+        nearest_area?: { areaName?: { value: string }[]; region?: { value: string }[] }[];
+      };
+      const cur = body.current_condition?.[0];
+      const area = body.nearest_area?.[0];
+      if (cur) {
+        const name = [area?.areaName?.[0]?.value, area?.region?.[0]?.value].filter(Boolean).join(", ") || place;
+        const desc = cur.weatherDesc?.[0]?.value?.toLowerCase() || "mixed conditions";
+        const text = `Operator. In ${name} it is ${Math.round(Number(cur.temp_C))}°C, ${desc}, wind ${Math.round(Number(cur.windspeedKmph))} km/h, humidity ${Math.round(Number(cur.humidity))}%. Source: wttr.in.${assumed ? " I assumed this city — name another if that is wrong." : ""}`;
+        return {
+          ok: true as const,
+          text,
+          citations: [{ title: `wttr.in/${place}`, source: "wttr.in", url: `https://wttr.in/${encodeURIComponent(place)}` }],
+          mode: "research" as const,
+        };
+      }
+    }
+
+    const geoRes = await fetch(
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(place)}&count=1&language=en&format=json`,
+    );
+    if (!geoRes.ok) return { ok: false as const, error: "geo" };
+    const geo = (await geoRes.json()) as {
+      results?: { name: string; latitude: number; longitude: number; admin1?: string }[];
+    };
+    const hit = geo.results?.[0];
+    if (!hit) return { ok: false as const, error: "place" };
+    const wxRes = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${hit.latitude}&longitude=${hit.longitude}&current=temperature_2m,weather_code,wind_speed_10m,relative_humidity_2m`,
+    );
+    if (!wxRes.ok) return { ok: false as const, error: "weather" };
+    const wx = (await wxRes.json()) as {
+      current?: {
+        temperature_2m: number;
+        weather_code: number;
+        wind_speed_10m: number;
+        relative_humidity_2m: number;
+      };
+    };
+    const cur = wx.current;
+    if (!cur) return { ok: false as const, error: "empty" };
+    const name = hit.admin1 ? `${hit.name}, ${hit.admin1}` : hit.name;
+    return {
+      ok: true as const,
+      text: formatWeather({
+        name,
+        temp: cur.temperature_2m,
+        code: cur.weather_code,
+        wind: cur.wind_speed_10m,
+        humidity: cur.relative_humidity_2m,
+        assumed,
+      }),
+      citations: [
+        {
+          title: "Open-Meteo forecast",
+          source: "Open-Meteo",
+          url: "https://open-meteo.com/",
+        },
+      ],
+      mode: "research" as const,
+    };
+  });
+
 
 export const askNex = createServerFn({ method: "POST" })
   .validator(

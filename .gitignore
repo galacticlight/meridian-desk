@@ -1,0 +1,16 @@
+node_modules/
+.vercel/
+dist/
+.nitro/
+.output/
+*.log
+.env
+.env.*
+!.env.example
+screenshots/
+artifacts/
+.grok/
+.DS_Store
+*.local
+coverage/
+tmp/

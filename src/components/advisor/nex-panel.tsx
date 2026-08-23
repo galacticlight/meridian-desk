@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { NexPortrait } from "@/components/nex/nex-portrait";
 import { Button } from "@/components/ui/button";
-import { askNex } from "@/lib/advisor/api";
+import { askNex, listMacVoices } from "@/lib/advisor/api";
 import {
   NEX_GREETING,
   NEX_GREETING_SPOKEN,
@@ -9,7 +9,7 @@ import {
   spokenFromReply,
   type AdvisorReply,
 } from "@/lib/advisor/local-agent";
-import { speakLocal, stopVoice } from "@/lib/advisor/voice";
+import { speakNexVoice, stopVoice } from "@/lib/advisor/voice";
 import type { RiskSnapshot, Series } from "@/lib/market/types";
 import { formatMoney, formatPct } from "@/lib/utils";
 
@@ -34,6 +34,8 @@ export function NexPanel({
   const [busy, setBusy] = useState(false);
   const [live, setLive] = useState(false);
   const [voice, setVoice] = useState(true);
+  const [macVoice, setMacVoice] = useState("Samantha");
+  const [macVoices, setMacVoices] = useState<{ id: string; name: string }[]>([]);
   const greeted = useRef(false);
   const [thread, setThread] = useState<
     { role: "you" | "nex"; text: string; citations?: AdvisorReply["citations"]; mode?: AdvisorReply["mode"] }[]
@@ -56,7 +58,7 @@ export function NexPanel({
       return;
     }
     setMood("speak");
-    await speakLocal(spokenFromReply(text));
+    await speakNexVoice(spokenFromReply(text), macVoice);
     setMood("idle");
   }
 
@@ -67,20 +69,19 @@ export function NexPanel({
   }
 
   useEffect(() => {
+    void listMacVoices().then((r) => {
+      if (!r.voices.length) return;
+      setMacVoices(r.voices);
+      const preferred = r.voices.find((v) => v.id === "Samantha") ?? r.voices[0];
+      if (preferred) setMacVoice(preferred.id);
+    });
+  }, []);
+
+  useEffect(() => {
     if (!voice) return;
-    const kick = () => greetOnce();
-    const synth = window.speechSynthesis;
-    if (synth?.getVoices().length) {
-      kick();
-    } else {
-      synth?.addEventListener("voiceschanged", kick, { once: true });
-    }
-    const onPointer = () => kick();
+    const onPointer = () => greetOnce();
     window.addEventListener("pointerdown", onPointer, { once: true });
-    return () => {
-      synth?.removeEventListener("voiceschanged", kick);
-      window.removeEventListener("pointerdown", onPointer);
-    };
+    return () => window.removeEventListener("pointerdown", onPointer);
   }, [voice]);
 
   useEffect(() => {
@@ -134,7 +135,21 @@ export function NexPanel({
         <p className="text-[11px] uppercase tracking-wide text-subtle">
           {live ? "Live model when available" : "Offline library"}
         </p>
-        <div className="flex gap-1.5">
+        <div className="flex items-center gap-1.5">
+          {macVoices.length ? (
+            <select
+              value={macVoice}
+              onChange={(e) => setMacVoice(e.target.value)}
+              className="h-8 max-w-[7.5rem] rounded-full border border-border bg-bg px-2 text-[11px] text-muted"
+              aria-label="Nex voice"
+            >
+              {macVoices.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+          ) : null}
           <button
             type="button"
             onClick={() => {

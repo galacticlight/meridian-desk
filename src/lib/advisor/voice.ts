@@ -1,7 +1,10 @@
+import { speakMac } from "./api";
+
 let currentAudio: HTMLAudioElement | null = null;
 let speechLevel = 0;
 const levelListeners = new Set<(n: number) => void>();
 let envelopeTimer = 0;
+let resumeTimer = 0;
 
 function setSpeechLevel(n: number) {
   speechLevel = Math.max(0, Math.min(1, n));
@@ -40,6 +43,10 @@ function stopEnvelope() {
 
 export function stopVoice() {
   stopEnvelope();
+  if (resumeTimer) {
+    window.clearInterval(resumeTimer);
+    resumeTimer = 0;
+  }
   if (typeof window !== "undefined" && window.speechSynthesis) {
     window.speechSynthesis.cancel();
   }
@@ -54,15 +61,16 @@ function scoreVoice(v: SpeechSynthesisVoice) {
   const n = v.name.toLowerCase();
   const lang = v.lang.toLowerCase();
   let s = 0;
+  if (/google|microsoft|android/.test(n)) s -= 100;
   if (lang.startsWith("en")) s += 12;
-  if (/en-us|en_us|en-gb|en-au/.test(lang)) s += 6;
-  if (/samantha|nicky|aaron|zoe|allison|ava|susan|karen|moira|serena/.test(n)) s += 40;
-  if (/enhanced|premium|natural|siri|neural/.test(n)) s += 18;
-  if (/\balex\b|\bdaniel\b|\btom\b/.test(n)) s += 10;
+  if (/en-us|en_us|en-gb|en-au|en-ie/.test(lang)) s += 6;
+  if (/samantha|nicky|ava|allison|zoe|karen|moira|serena|tessa|fiona/.test(n)) s += 50;
+  if (/enhanced|premium|natural|siri|neural/.test(n)) s += 20;
+  if (/\balex\b|\bdaniel\b/.test(n)) s += 6;
   if (/compact|novelty|whisper|zarvox|trinoids|bells|boing|bubbles|cellos|bad news|good news|albert|bahh|pipe|organ/.test(n)) {
     s -= 80;
   }
-  if (v.localService) s += 8;
+  if (v.localService) s += 14;
   return s;
 }
 
@@ -90,25 +98,32 @@ export async function speakLocal(text: string): Promise<void> {
     return;
   }
   stopVoice();
-  await new Promise((r) => window.setTimeout(r, 60));
+  await new Promise((r) => window.setTimeout(r, 40));
   const voices = await readyVoices();
   const voice = pickVoice(voices);
   return new Promise((resolve) => {
     const utter = new SpeechSynthesisUtterance(spoken);
-    utter.rate = 0.98;
-    utter.pitch = 1;
-    utter.lang = voice?.lang || "en-US";
+    utter.rate = 0.94;
+    utter.pitch = 0.92;
     if (voice) utter.voice = voice;
     startEnvelope();
-    utter.onend = () => {
+    resumeTimer = window.setInterval(() => {
+      if (!window.speechSynthesis.speaking) return;
+      window.speechSynthesis.pause();
+      window.speechSynthesis.resume();
+    }, 8000);
+    const done = () => {
+      if (resumeTimer) {
+        window.clearInterval(resumeTimer);
+        resumeTimer = 0;
+      }
       stopEnvelope();
       resolve();
     };
-    utter.onerror = () => {
-      stopEnvelope();
-      resolve();
-    };
+    utter.onend = done;
+    utter.onerror = done;
     window.speechSynthesis.speak(utter);
+    window.speechSynthesis.resume();
   });
 }
 
@@ -166,4 +181,19 @@ export function playAudioBytes(base64: string, mime = "audio/mpeg"): Promise<voi
       })
       .catch(done);
   });
+}
+
+export async function speakNexVoice(text: string, macVoice?: string) {
+  const spoken = text.replace(/\s+/g, " ").trim();
+  if (!spoken) return;
+  try {
+    const mac = await speakMac({ data: { text: spoken, voice: macVoice } });
+    if (mac.ok) {
+      await playAudioBytes(mac.audio, mac.mime);
+      return;
+    }
+  } catch {
+    /* browser voice below */
+  }
+  await speakLocal(spoken);
 }

@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { CORPUS, searchCorpus } from "./corpus";
 import { systemPrompt } from "./local-agent";
+import { listInstalledMacVoices, renderMacSpeech } from "./mac-say";
 
 export const askNex = createServerFn({ method: "POST" })
   .validator((input: { query: string; context: string }) => input)
@@ -54,28 +55,15 @@ export const askNex = createServerFn({ method: "POST" })
     };
   });
 
-/** User-initiated studio voice. Caps length. Falls back silently if the key is absent. */
-export const speakNex = createServerFn({ method: "POST" })
-  .validator((input: { text: string }) => input)
+export const listMacVoices = createServerFn({ method: "GET" }).handler(async () => {
+  const voices = await listInstalledMacVoices();
+  return { ok: true as const, voices };
+});
+
+export const speakMac = createServerFn({ method: "POST" })
+  .validator((input: { text: string; voice?: string }) => input)
   .handler(async ({ data }) => {
-    const apiKey = process.env.XAI_API_KEY;
-    if (!apiKey) return { ok: false as const, error: "offline" };
-    const text = data.text.replace(/\s+/g, " ").trim().slice(0, 420);
-    if (!text) return { ok: false as const, error: "empty" };
-    const res = await fetch("https://api.x.ai/v1/tts", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({ text, voice_id: "eve", language: "en" }),
-    });
-    if (!res.ok) return { ok: false as const, error: `tts ${res.status}` };
-    const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.byteLength < 80) return { ok: false as const, error: "empty" };
-    return {
-      ok: true as const,
-      mime: res.headers.get("content-type") || "audio/mpeg",
-      audio: buf.toString("base64"),
-    };
+    const rendered = await renderMacSpeech(data.text, data.voice);
+    if (!rendered) return { ok: false as const, error: "unavailable" };
+    return { ok: true as const, ...rendered };
   });

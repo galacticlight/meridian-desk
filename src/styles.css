@@ -79,90 +79,50 @@
     transform: translateY(0);
   }
   50% {
-    transform: translateY(-2px);
+    transform: translateY(-3px);
   }
 }
 
-@keyframes nex-blink {
-  0%,
-  92%,
-  100% {
-    transform: scaleY(1);
-  }
-  96% {
-    transform: scaleY(0.08);
-  }
-}
-
-@keyframes nex-filament {
+@keyframes nex-scar-trace {
   from {
-    stroke-dashoffset: 120;
+    stroke-dashoffset: 92;
   }
   to {
     stroke-dashoffset: 0;
   }
 }
 
-@keyframes nex-flash {
+@keyframes nex-cheek-pulse {
   0%,
-  82%,
   100% {
-    opacity: 0;
+    opacity: 0.22;
   }
-  84% {
-    opacity: 0.35;
-  }
-  86% {
-    opacity: 0;
-  }
-  89% {
-    opacity: 0.7;
-  }
-  91% {
-    opacity: 0.05;
-  }
-  93% {
-    opacity: 0.45;
-  }
-  95% {
-    opacity: 0;
+  50% {
+    opacity: 0.55;
   }
 }
 
-@keyframes nex-bolt {
-  0%,
-  78%,
-  100% {
-    opacity: 0;
-  }
-  80% {
-    opacity: 1;
-  }
-  83% {
-    opacity: 0.15;
-  }
-  85% {
-    opacity: 0.9;
-  }
-  88% {
-    opacity: 0;
-  }
+.nex-breathe {
+  animation: nex-breathe 12s ease-in-out infinite;
 }
 
-.nex-filament {
-  animation: nex-filament 2.8s linear infinite;
+.nex-scar-trace {
+  animation: nex-scar-trace 11s linear infinite;
 }
 
-.nex-flash {
-  animation: nex-flash 7.5s ease-in-out infinite;
+.nex-scar-glow {
+  animation: nex-cheek-pulse 6.5s ease-in-out infinite;
 }
 
-.nex-bolt {
-  animation: nex-bolt 5.6s ease-in infinite;
+.nex-cheek-pulse {
+  animation: nex-cheek-pulse 5.8s ease-in-out infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .nex-breathe,
+  .nex-scar-trace,
+  .nex-scar-glow,
+  .nex-cheek-pulse,
   .nex-blink,
   .nex-filament,
   .nex-speak,

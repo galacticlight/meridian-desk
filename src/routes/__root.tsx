@@ -3,7 +3,7 @@ import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import appCss from "../styles.css?url";
 
-const APP_NAME = "Meridian Desk";
+const APP_NAME = "Nex";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -14,7 +14,7 @@ export const Route = createRootRoute({
       {
         name: "description",
         content:
-          "Private market laboratory with on-device ensembles, GARCH-t cones, and Nex — a local educational financial companion.",
+          "Nex is a local research companion with on-device market lab, live web and X research, and a speaking portrait.",
       },
       { name: "theme-color", content: "#0a0a0b" },
     ],

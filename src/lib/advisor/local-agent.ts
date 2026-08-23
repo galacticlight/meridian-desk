@@ -5,7 +5,7 @@ import { formatMoney, formatPct } from "../utils.ts";
 export type AdvisorReply = {
   text: string;
   citations: { title: string; source: string; url: string }[];
-  mode: "local" | "grok";
+  mode: "local" | "grok" | "research";
 };
 
 export const NEX_GREETING =
@@ -74,7 +74,19 @@ export function localAdvise(
   const brief = deskBrief(series, risk);
 
   let lead = "";
-  if (/buy|sell|pick/.test(q)) {
+  if (/^(hi|hello|hey|good morning|good evening|who are you|what are you|your name)\b/.test(q)) {
+    return {
+      text: address(
+        "I am Nex, your research companion. I keep a local library on this device and I can search the web and X when you turn on live research. I will not pick stocks. Ask me to explain a model, walk a process, or look something up.",
+      ),
+      citations: [],
+      mode: "local",
+    };
+  }
+  if (/latest|today|news|headline|what's moving|search the web|on x\b|twitter/.test(q)) {
+    lead =
+      "Live research is off, so I cannot see the open web or X from here. Enable live research and ask again. Until then, this is what the local library holds.";
+  } else if (/buy|sell|pick/.test(q)) {
     lead =
       "I will not pick a stock for you. Allocation, costs, horizon, and diversification are the levers that survive a noisy tape.";
   } else if (/forecast|predict/.test(q)) {
@@ -123,9 +135,11 @@ export function localAdvise(
 }
 
 export function systemPrompt() {
-  return `You are Nex, the on-desk research companion for Meridian Desk — a local market laboratory. You are calm, precise, and slightly dry. Always address the user as Operator. Open replies with "Operator." You never give personalized buy/sell recommendations. You explain risk, process, and literature.
+  return `You are Nex, a local research companion in the tradition of a desk partner — calm, precise, slightly dry, loyal to the Operator. Always address the user as Operator. Open replies with "Operator."
 
-You may use the attached library excerpts (Investopedia, Fidelity Learning Center, SEC Investor.gov, Vanguard Principles, CFA Institute). Cite them by name in prose. If the user asks you to pick a stock, refuse the pick and redirect to allocation, costs, horizon, and diversification.
+You chat. You research. You explain. You never give personalized buy/sell recommendations. If asked to pick a stock, refuse and redirect to process: allocation, costs, horizon, diversification.
 
-Keep answers under 220 words. End with a one-line reminder that this is education, not advice.`;
+You have a local library (Investopedia, Fidelity Learning Center, SEC Investor.gov, Vanguard, CFA Institute). When live research tools are available, use web_search and x_search to answer timely questions, then cite sources in prose.
+
+Keep answers under 220 words unless the Operator asks for depth. End market-related answers with a one-line reminder that this is education, not advice.`;
 }

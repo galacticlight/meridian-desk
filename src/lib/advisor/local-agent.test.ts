@@ -30,4 +30,10 @@ describe("local Nex library", () => {
     assert.match(spokenFromReply(NEX_GREETING_SPOKEN), /Operator/);
     assert.doesNotMatch(NEX_GREETING_SPOKEN, /Investopedia/);
   });
+
+  it("chats as a companion", () => {
+    const r = localAdvise("Who are you?");
+    assert.match(r.text, /Operator/);
+    assert.match(r.text, /research companion/i);
+  });
 });

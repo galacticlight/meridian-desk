@@ -8,6 +8,7 @@ import {
   spokenFromReply,
   type AdvisorReply,
 } from "@/lib/advisor/local-agent";
+import { clockReply, followUps, isTapeQuery, isTimeQuery, tapeReply } from "@/lib/advisor/skills";
 import { speakNexVoice, stopVoice } from "@/lib/advisor/voice";
 import { isLiveQuery, isWeatherQuery } from "@/lib/advisor/weather";
 import type { Mood } from "@/components/nex/nex-portrait";
@@ -15,13 +16,23 @@ import type { RiskSnapshot, Series } from "@/lib/market/types";
 import { formatMoney, formatPct } from "@/lib/utils";
 
 const STARTERS = [
+  "Brief me on the tape.",
   "What's the weather in Seattle?",
-  "Who are you?",
+  "What time is it?",
   "How should I think about asset allocation?",
-  "What can this forecast actually tell me?",
 ];
 
 const THREAD_KEY = "nex-thread-v1";
+
+type Recog = {
+  lang: string;
+  interimResults: boolean;
+  onstart: (() => void) | null;
+  onresult: ((e: { results: { [i: number]: { [j: number]: { transcript: string } } } }) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+};
 
 type Turn = {
   role: "you" | "nex";
@@ -46,6 +57,7 @@ export function NexPanel({
   const [voice, setVoice] = useState(true);
   const [macVoice, setMacVoice] = useState("Samantha");
   const [macVoices, setMacVoices] = useState<{ id: string; name: string }[]>([]);
+  const [listening, setListening] = useState(false);
   const greeted = useRef(false);
   const scroller = useRef<HTMLDivElement>(null);
   const [thread, setThread] = useState<Turn[]>([{ role: "nex", text: NEX_GREETING, mode: "local" }]);
@@ -128,9 +140,11 @@ export function NexPanel({
     try {
       if (isWeatherQuery(q)) {
         const wx = await getWeather({ data: { query: q } });
-        if (wx.ok) {
-          reply = { text: wx.text, citations: wx.citations, mode: wx.mode };
-        }
+        if (wx.ok) reply = { text: wx.text, citations: wx.citations, mode: wx.mode };
+      } else if (isTimeQuery(q)) {
+        reply = clockReply();
+      } else if (isTapeQuery(q)) {
+        reply = tapeReply(series, risk);
       } else if (research || isLiveQuery(q)) {
         const remote = await askNex({
           data: { query: q, context, research: true, history: thread.slice(-8) },
@@ -149,6 +163,34 @@ export function NexPanel({
     setThread((t) => [...t, { role: "nex", ...reply }]);
     setBusy(false);
     await vocalize(reply.text);
+  }
+
+  function listen() {
+    const w = window as unknown as {
+      SpeechRecognition?: new () => Recog;
+      webkitSpeechRecognition?: new () => Recog;
+    };
+    const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
+    if (!SR) return;
+    const rec = new SR();
+    rec.lang = "en-US";
+    rec.interimResults = false;
+    rec.onstart = () => {
+      setListening(true);
+      moodTo("listen");
+    };
+    rec.onresult = (e) => {
+      const t = e.results[0]?.[0]?.transcript;
+      if (t) void submit(t);
+    };
+    rec.onerror = () => {
+      setListening(false);
+      moodTo("idle");
+    };
+    rec.onend = () => {
+      setListening(false);
+    };
+    rec.start();
   }
 
   return (
@@ -245,7 +287,10 @@ export function NexPanel({
 
       <div className="border-t border-border p-3">
         <div className="mb-2 flex flex-wrap gap-1.5">
-          {STARTERS.map((s) => (
+          {(thread.at(-1)?.role === "nex" && thread.length > 1
+            ? followUps(thread.at(-2)?.text ?? "", series)
+            : STARTERS
+          ).map((s) => (
             <button
               key={s}
               type="button"
@@ -269,10 +314,13 @@ export function NexPanel({
               setQuery(e.target.value);
               if (e.target.value) moodTo("listen");
             }}
-            placeholder="Ask Nex — weather, process, a lookup"
+            placeholder="Ask Nex — weather, time, tape, a lookup"
             className="h-12 min-w-0 flex-1 rounded-md border border-border bg-bg px-3 text-sm text-fg placeholder:text-subtle focus:border-border-strong focus:outline-none"
             suppressHydrationWarning
           />
+          <Button type="button" variant="secondary" size="lg" onClick={listen} disabled={busy}>
+            {listening ? "Listening" : "Speak"}
+          </Button>
           <Button type="submit" size="lg" disabled={busy}>
             Send
           </Button>

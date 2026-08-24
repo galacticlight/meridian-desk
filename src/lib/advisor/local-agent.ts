@@ -77,7 +77,7 @@ export function localAdvise(
   if (/^(hi|hello|hey|good morning|good evening|who are you|what are you|your name)\b/.test(q)) {
     return {
       text: address(
-        "I am Nex, your research companion. Ask me the weather, a market process, or to look something up. I will not pick stocks.",
+        "I am Nex, your research companion. Ask me the weather, the time, a briefing on the loaded tape, or a lookup. I will not pick stocks.",
       ),
       citations: [],
       mode: "local",

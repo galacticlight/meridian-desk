@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { loadMarket } from "@/lib/market/api";
 import { riskSnapshot } from "@/lib/market/forecast";
 import type { Series } from "@/lib/market/types";
+import { formatMoney, formatPct } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({ component: Companion });
 
@@ -57,6 +58,18 @@ function Companion() {
         <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-bg via-bg/70 to-transparent px-5 pb-4 pt-16">
           <p className="text-[11px] uppercase tracking-[0.28em] text-subtle">Research companion</p>
           <h1 className="font-display text-4xl tracking-tight sm:text-5xl">Nex</h1>
+          {current && risk ? (
+            <button
+              type="button"
+              onClick={() => setDesk(true)}
+              className="pointer-events-auto mt-3 flex flex-wrap items-center gap-3 rounded-md border border-border bg-bg/70 px-3 py-2 text-left text-xs text-muted"
+            >
+              <span className="font-mono text-fg">{current.ticker}</span>
+              <span className="font-mono tabular-nums">{formatMoney(risk.last)}</span>
+              <span className={risk.change >= 0 ? "text-up" : "text-down"}>{formatPct(risk.change)}</span>
+              <span className="uppercase tracking-wide">{risk.regime}</span>
+            </button>
+          ) : null}
         </div>
       </section>
 

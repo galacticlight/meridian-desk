@@ -33,6 +33,7 @@ function Companion() {
       setSeries(res.series);
       setActive(0);
       setNote(res.note);
+      setError(res.misses?.length && !res.series.length ? res.note : res.misses?.length ? res.note : null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load the tape.");
     } finally {
@@ -49,10 +50,27 @@ function Companion() {
   return (
     <main className="min-h-dvh bg-bg lg:grid lg:grid-cols-[minmax(0,1fr)_min(42vw,28rem)]">
       <section className="relative flex h-[48vh] flex-col lg:h-dvh">
-        <div className="absolute left-4 top-4 z-20 lg:left-6">
+        <div className="absolute left-4 top-4 z-20 flex flex-wrap items-center gap-2 lg:left-6">
           <Button variant="secondary" onClick={() => setDesk((v) => !v)}>
             {desk ? "Close desk" : "Open desk"}
           </Button>
+          <form
+            className="flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void load();
+            }}
+          >
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="SEV, Aptera, AAPL"
+              className="h-11 w-44 rounded-md border border-border bg-bg/80 px-3 font-mono text-sm text-fg placeholder:text-subtle focus:border-border-strong focus:outline-none sm:w-56"
+            />
+            <Button type="submit" disabled={busy}>
+              {busy ? "Loading" : "Load"}
+            </Button>
+          </form>
         </div>
         <NexPortrait mood={mood} className="min-h-0 flex-1" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-bg via-bg/70 to-transparent px-5 pb-4 pt-16">
@@ -65,11 +83,14 @@ function Companion() {
               className="pointer-events-auto mt-3 flex flex-wrap items-center gap-3 rounded-md border border-border bg-bg/70 px-3 py-2 text-left text-xs text-muted"
             >
               <span className="font-mono text-fg">{current.ticker}</span>
+              <span className="max-w-[12rem] truncate">{current.name}</span>
               <span className="font-mono tabular-nums">{formatMoney(risk.last)}</span>
               <span className={risk.change >= 0 ? "text-up" : "text-down"}>{formatPct(risk.change)}</span>
               <span className="uppercase tracking-wide">{risk.regime}</span>
+              <span className="text-subtle">{current.source === "live" ? "Live Nasdaq" : "Simulated"}</span>
             </button>
           ) : null}
+          {error ? <p className="pointer-events-auto mt-2 max-w-md text-sm text-down">{error}</p> : null}
         </div>
       </section>
 

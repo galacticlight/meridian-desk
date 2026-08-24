@@ -67,8 +67,8 @@ export function DeskLab({
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="AAPL, MSFT, SPY"
-          className="h-11 min-w-0 flex-1 rounded-md border border-border bg-bg px-3 font-mono text-sm uppercase text-fg placeholder:text-subtle focus:border-border-strong focus:outline-none"
+          placeholder="SEV, Aptera, AAPL, SPY"
+          className="h-11 min-w-0 flex-1 rounded-md border border-border bg-bg px-3 font-mono text-sm text-fg placeholder:text-subtle focus:border-border-strong focus:outline-none"
         />
         <Button type="submit" disabled={busy}>
           {busy ? "Loading" : "Load"}

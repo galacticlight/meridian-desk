@@ -1,64 +1,8 @@
 import { useEffect, useState } from "react";
+import { LightningGL } from "./lightning-gl";
 import { cn } from "@/lib/utils";
 
 export type Mood = "idle" | "listen" | "speak" | "think";
-
-function ScarLightning({ mood }: { mood: Mood }) {
-  return (
-    <svg
-      className="pointer-events-none absolute inset-0 h-full w-full mix-blend-screen"
-      viewBox="0 0 200 300"
-      preserveAspectRatio="xMidYMid meet"
-      aria-hidden="true"
-    >
-      <defs>
-        <radialGradient id="nex-cheek" cx="46%" cy="40%" r="22%">
-          <stop offset="0%" stopColor="rgba(164, 224, 226, 0.42)" />
-          <stop offset="55%" stopColor="rgba(120, 180, 184, 0.12)" />
-          <stop offset="100%" stopColor="rgba(120, 180, 184, 0)" />
-        </radialGradient>
-        <filter id="nex-soft" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation="1.1" />
-        </filter>
-      </defs>
-      <ellipse
-        className={cn("nex-cheek-pulse", mood === "think" && "opacity-40", mood === "speak" && "opacity-100")}
-        cx="92"
-        cy="124"
-        rx="34"
-        ry="48"
-        fill="url(#nex-cheek)"
-      />
-      <g
-        fill="none"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        filter="url(#nex-soft)"
-      >
-        <path
-          className="nex-scar-glow"
-          d="M90 106 C98 120 86 134 96 148 C108 162 88 176 94 194"
-          stroke="rgba(186, 230, 232, 0.35)"
-          strokeWidth="3.2"
-        />
-        <path
-          className="nex-scar-trace"
-          d="M90 106 C98 120 86 134 96 148 C108 162 88 176 94 194"
-          stroke="rgba(210, 244, 246, 0.9)"
-          strokeWidth="1.15"
-          strokeDasharray="18 28"
-        />
-        <path
-          className="nex-scar-trace"
-          d="M96 130 L88 144"
-          stroke="rgba(210, 244, 246, 0.55)"
-          strokeWidth="0.7"
-          strokeDasharray="6 14"
-        />
-      </g>
-    </svg>
-  );
-}
 
 export function NexPortrait({
   mood = "idle",
@@ -85,7 +29,7 @@ export function NexPortrait({
             alt=""
             className="h-full w-full object-contain object-center"
           />
-          {reduce ? null : <ScarLightning mood={mood} />}
+          {reduce ? null : <LightningGL mood={mood} />}
           <div
             className={cn(
               "pointer-events-none absolute inset-0",

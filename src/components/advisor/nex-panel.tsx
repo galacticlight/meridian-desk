@@ -191,7 +191,7 @@ export function NexPanel({
         if (last?.role === "nex") copy[copy.length - 1] = { ...last, text: soFar };
         return copy;
       });
-      onCaption?.(soFar);
+      onCaption?.(spokenFromReply(soFar));
     });
     setBusy(false);
     await vocalize(reply.text);
@@ -225,19 +225,10 @@ export function NexPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-        <div>
-          <p className="font-display text-2xl leading-none">Nex</p>
-          <p className="mt-1 text-[11px] uppercase tracking-wide text-subtle">
-            {busy ? "Working" : liveMind ? "Live mind when asked" : "Local precepts"}
-          </p>
-        </div>
-        <span className="rounded-full border border-border px-2.5 py-1 text-[10px] uppercase tracking-wide text-subtle">
-          {mood === "speak" ? "speaking" : mood === "think" ? "thinking" : mood === "listen" ? "listening" : "on desk"}
-        </span>
-      </div>
-
       <div className="flex flex-wrap items-center gap-1.5 border-b border-border px-4 py-2">
+        <p className="mr-auto text-[11px] uppercase tracking-wide text-subtle">
+          {busy ? "Working" : liveMind ? "Live mind" : "Local precepts"}
+        </p>
         {macVoices.length ? (
           <select
             value={macVoice}

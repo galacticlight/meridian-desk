@@ -22,6 +22,7 @@ export function DeskLab({
   error,
   busy,
   onLoad,
+  compact,
 }: {
   series: Series[];
   input: string;
@@ -32,6 +33,7 @@ export function DeskLab({
   error: string | null;
   busy: boolean;
   onLoad: () => void;
+  compact?: boolean;
 }) {
   const [model, setModel] = useState<ModelId>("ensemble");
   const [horizon, setHorizon] = useState<Horizon>("63d");
@@ -57,6 +59,7 @@ export function DeskLab({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {compact ? null : (
       <form
         className="flex gap-2 border-b border-border p-3"
         onSubmit={(e) => {
@@ -74,6 +77,7 @@ export function DeskLab({
           {busy ? "Loading" : "Load"}
         </Button>
       </form>
+      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="mb-3 flex flex-wrap gap-2">

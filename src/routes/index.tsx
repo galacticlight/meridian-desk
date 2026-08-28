@@ -60,13 +60,13 @@ function Habitat() {
   }, []);
 
   return (
-    <main className="flex min-h-dvh flex-col bg-bg">
-      <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_min(42vw,28rem)]">
+    <main className="flex h-dvh flex-col overflow-hidden bg-bg">
+      <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_min(38vw,26rem)]">
         <section className="relative hidden min-h-0 lg:block">
-          <NexPortrait mood={mood} caption={caption} className="h-full min-h-[28rem]" />
+          <NexPortrait mood={mood} caption={caption} className="h-full" />
         </section>
-        <aside className="flex min-h-[60vh] flex-col border-border bg-bg lg:h-auto lg:border-l">
-          <div className="h-40 shrink-0 lg:hidden">
+        <aside className="flex min-h-0 flex-col border-border bg-bg/95 lg:border-l">
+          <div className="h-44 shrink-0 overflow-hidden lg:hidden">
             <NexPortrait mood={mood} caption={caption} className="h-full" />
           </div>
           <NexPanel series={current} risk={risk} onMood={setMood} onCaption={setCaption} />
@@ -120,6 +120,7 @@ function Habitat() {
               error={error}
               busy={busy}
               onLoad={() => void load()}
+              compact
             />
           </div>
         ) : null}

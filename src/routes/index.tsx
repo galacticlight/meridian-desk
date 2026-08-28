@@ -2,13 +2,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { NexPanel } from "@/components/advisor/nex-panel";
 import { DeskLab } from "@/components/desk/lab";
+import { TapeHud } from "@/components/desk/tape-hud";
 import { NexPortrait, type Mood } from "@/components/nex/nex-portrait";
-import { Button } from "@/components/ui/button";
 import { loadMemory, rememberTickers, saveMemory } from "@/lib/advisor/memory";
 import { loadMarket } from "@/lib/market/api";
 import { riskSnapshot } from "@/lib/market/forecast";
 import type { Series } from "@/lib/market/types";
-import { formatMoney, formatPct } from "@/lib/utils";
+import { formatMoney } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({ component: Habitat });
 
@@ -42,7 +42,7 @@ function Habitat() {
         const last = s.bars.at(-1)?.close;
         setCaption(
           last != null
-            ? `Tape loaded. ${s.ticker} last ${formatMoney(last)}. Live Nasdaq. The cone is not a call.`
+            ? `Tape loaded. ${s.ticker} last ${formatMoney(last)}. The cone is not a call.`
             : `Tape loaded. ${s.ticker}.`,
         );
       }
@@ -61,70 +61,43 @@ function Habitat() {
 
   return (
     <main className="flex h-dvh flex-col overflow-hidden bg-bg">
-      <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_min(38vw,26rem)]">
-        <section className="relative hidden min-h-0 lg:block">
+      <div className="grid min-h-0 flex-1 grid-rows-[minmax(14rem,38vh)_minmax(0,1fr)] lg:grid-cols-[minmax(0,1fr)_min(38vw,26rem)] lg:grid-rows-1">
+        <section className="relative min-h-0">
           <NexPortrait mood={mood} caption={caption} className="h-full" />
         </section>
-        <aside className="flex min-h-0 flex-col border-border bg-bg/95 lg:border-l">
-          <div className="h-44 shrink-0 overflow-hidden lg:hidden">
-            <NexPortrait mood={mood} caption={caption} className="h-full" />
-          </div>
+        <aside className="flex min-h-0 flex-col border-t border-border bg-bg/95 lg:border-l lg:border-t-0">
           <NexPanel series={current} risk={risk} onMood={setMood} onCaption={setCaption} />
         </aside>
       </div>
 
-      <footer className="border-t border-border bg-bg-elevated">
-        <div className="flex flex-wrap items-center gap-2 px-4 py-3">
-          <form
-            className="flex min-w-0 flex-1 gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void load();
-            }}
-          >
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="SEV, Aptera, AAPL"
-              className="h-11 min-w-0 flex-1 rounded-md border border-border bg-bg px-3 font-mono text-sm text-fg placeholder:text-subtle focus:border-border-strong focus:outline-none sm:max-w-xs"
-            />
-            <Button type="submit" disabled={busy}>
-              {busy ? "Loading" : "Load tape"}
-            </Button>
-          </form>
-          {current && risk ? (
-            <div className="flex flex-wrap items-center gap-3 font-mono text-xs tabular-nums text-muted">
-              <span className="text-fg">{current.ticker}</span>
-              <span>{formatMoney(risk.last)}</span>
-              <span className={risk.change >= 0 ? "text-up" : "text-down"}>{formatPct(risk.change)}</span>
-              <span className="uppercase tracking-wide">{risk.regime}</span>
-              <span>{current.source === "live" ? "Live Nasdaq" : "Simulated"}</span>
-            </div>
-          ) : (
-            <p className="text-xs text-subtle">{note}</p>
-          )}
-          <Button variant="secondary" onClick={() => setDesk((v) => !v)}>
-            {desk ? "Hide lab" : "Show lab"}
-          </Button>
+      <TapeHud
+        input={input}
+        setInput={setInput}
+        series={series}
+        current={current}
+        risk={risk}
+        busy={busy}
+        error={error}
+        desk={desk}
+        onLoad={(t) => void load(t ?? input)}
+        onToggleDesk={() => setDesk((v) => !v)}
+      />
+      {desk ? (
+        <div className="max-h-[46vh] border-t border-border">
+          <DeskLab
+            series={series}
+            input={input}
+            setInput={setInput}
+            active={active}
+            setActive={setActive}
+            note={note}
+            error={error}
+            busy={busy}
+            onLoad={() => void load()}
+            compact
+          />
         </div>
-        {error ? <p className="px-4 pb-2 text-sm text-down">{error}</p> : null}
-        {desk ? (
-          <div className="max-h-[52vh] border-t border-border">
-            <DeskLab
-              series={series}
-              input={input}
-              setInput={setInput}
-              active={active}
-              setActive={setActive}
-              note={note}
-              error={error}
-              busy={busy}
-              onLoad={() => void load()}
-              compact
-            />
-          </div>
-        ) : null}
-      </footer>
+      ) : null}
     </main>
   );
 }

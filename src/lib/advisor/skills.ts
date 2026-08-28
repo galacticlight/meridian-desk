@@ -34,7 +34,7 @@ export function clockReply(timeZone = "America/Los_Angeles"): AdvisorReply {
 export function tapeReply(series?: Series, risk?: RiskSnapshot): AdvisorReply {
   if (!series || !risk) {
     return {
-      text: "Operator. No tape is loaded. Open the desk and load a symbol, then ask me again.",
+      text: "Operator. No tape is loaded. Search a ticker in the dock, then ask me again.",
       citations: [],
       mode: "local",
     };

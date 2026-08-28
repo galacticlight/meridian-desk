@@ -181,3 +181,16 @@ export const loadMarket = createServerFn({ method: "POST" })
         : "Enter a ticker or company name.";
     return { series, note, misses };
   });
+
+export const searchSymbols = createServerFn({ method: "POST" })
+  .validator((input: { q: string }) => input)
+  .handler(async ({ data }) => {
+    const q = data.q.trim();
+    if (q.length < 1) return { hits: [] as { symbol: string; name: string; asset: string }[] };
+    try {
+      return { hits: (await searchNasdaq(q)).slice(0, 8) };
+    } catch {
+      return { hits: [] as { symbol: string; name: string; asset: string }[] };
+    }
+  });
+

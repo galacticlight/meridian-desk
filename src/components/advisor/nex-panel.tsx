@@ -1,14 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { askNex, getWeather, listMacVoices } from "@/lib/advisor/api";
+import { askNex, getWeather, listMacVoices, nexLive } from "@/lib/advisor/api";
 import {
   NEX_GREETING,
   NEX_GREETING_SPOKEN,
+  canonicalReply,
   localAdvise,
   spokenFromReply,
   type AdvisorReply,
 } from "@/lib/advisor/local-agent";
+import {
+  formatMemoryBlock,
+  ingestOperatorUtterance,
+  loadMemory,
+  saveMemory,
+  createMemory,
+  type OperatorMemory,
+} from "@/lib/advisor/memory";
 import { clockReply, followUps, isTapeQuery, isTimeQuery, tapeReply } from "@/lib/advisor/skills";
+import { playTokens } from "@/lib/advisor/stream";
 import { speakNexVoice, stopVoice } from "@/lib/advisor/voice";
 import { isLiveQuery, isWeatherQuery } from "@/lib/advisor/weather";
 import type { Mood } from "@/components/nex/nex-portrait";
@@ -18,11 +28,11 @@ import { formatMoney, formatPct } from "@/lib/utils";
 const STARTERS = [
   "Brief me on the tape.",
   "What's the weather in Seattle?",
-  "What time is it?",
+  "Who are you?",
   "How should I think about asset allocation?",
 ];
 
-const THREAD_KEY = "nex-thread-v1";
+const THREAD_KEY = "nex-thread-v2";
 
 type Recog = {
   lang: string;
@@ -45,19 +55,22 @@ export function NexPanel({
   series,
   risk,
   onMood,
+  onCaption,
 }: {
   series?: Series;
   risk?: RiskSnapshot;
   onMood?: (mood: Mood) => void;
+  onCaption?: (text: string) => void;
 }) {
   const [query, setQuery] = useState("");
   const [mood, setMood] = useState<Mood>("idle");
   const [busy, setBusy] = useState(false);
-  const [research, setResearch] = useState(false);
   const [voice, setVoice] = useState(true);
   const [macVoice, setMacVoice] = useState("Samantha");
   const [macVoices, setMacVoices] = useState<{ id: string; name: string }[]>([]);
   const [listening, setListening] = useState(false);
+  const [liveMind, setLiveMind] = useState(false);
+  const [memory, setMemory] = useState<OperatorMemory>(() => createMemory());
   const greeted = useRef(false);
   const scroller = useRef<HTMLDivElement>(null);
   const [thread, setThread] = useState<Turn[]>([{ role: "nex", text: NEX_GREETING, mode: "local" }]);
@@ -73,6 +86,7 @@ export function NexPanel({
   }, [series, risk]);
 
   useEffect(() => {
+    setMemory(loadMemory());
     try {
       const raw = localStorage.getItem(THREAD_KEY);
       if (!raw) return;
@@ -92,7 +106,18 @@ export function NexPanel({
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
   }, [thread]);
 
+  useEffect(() => {
+    void nexLive().then((r) => setLiveMind(r.live)).catch(() => setLiveMind(false));
+    void listMacVoices().then((r) => {
+      if (!r.voices.length) return;
+      setMacVoices(r.voices);
+      const preferred = r.voices.find((v) => v.id === "Samantha") ?? r.voices[0];
+      if (preferred) setMacVoice(preferred.id);
+    });
+  }, []);
+
   async function vocalize(text: string) {
+    onCaption?.(spokenFromReply(text));
     if (!voice) {
       moodTo("idle");
       return;
@@ -105,17 +130,9 @@ export function NexPanel({
   function greetOnce() {
     if (greeted.current || !voice) return;
     greeted.current = true;
+    onCaption?.(NEX_GREETING_SPOKEN);
     void vocalize(NEX_GREETING_SPOKEN);
   }
-
-  useEffect(() => {
-    void listMacVoices().then((r) => {
-      if (!r.voices.length) return;
-      setMacVoices(r.voices);
-      const preferred = r.voices.find((v) => v.id === "Samantha") ?? r.voices[0];
-      if (preferred) setMacVoice(preferred.id);
-    });
-  }, []);
 
   useEffect(() => {
     if (!voice) return;
@@ -132,35 +149,50 @@ export function NexPanel({
     const q = text.trim();
     if (!q || busy) return;
     setQuery("");
+    const nextMem = ingestOperatorUtterance(memory, q);
+    setMemory(nextMem);
+    saveMemory(nextMem);
     setThread((t) => [...t, { role: "you", text: q }]);
     setBusy(true);
     moodTo("think");
-    const local = localAdvise(q, series, risk);
-    let reply: AdvisorReply = local;
+    let reply: AdvisorReply =
+      canonicalReply(q) ??
+      (isTimeQuery(q) ? clockReply() : isTapeQuery(q) ? tapeReply(series, risk) : localAdvise(q, series, risk, nextMem));
     try {
       if (isWeatherQuery(q)) {
         const wx = await getWeather({ data: { query: q } });
         if (wx.ok) reply = { text: wx.text, citations: wx.citations, mode: wx.mode };
-      } else if (isTimeQuery(q)) {
-        reply = clockReply();
-      } else if (isTapeQuery(q)) {
-        reply = tapeReply(series, risk);
-      } else if (research || isLiveQuery(q)) {
+      } else if (!canonicalReply(q) && !isTimeQuery(q) && !isTapeQuery(q) && (liveMind || isLiveQuery(q))) {
         const remote = await askNex({
-          data: { query: q, context, research: true, history: thread.slice(-8) },
+          data: {
+            query: q,
+            context,
+            research: isLiveQuery(q),
+            history: thread.slice(-8),
+            memory: formatMemoryBlock(nextMem),
+          },
         });
         if (remote.ok) {
           reply = {
             text: remote.text,
             citations: remote.citations,
-            mode: remote.mode ?? "research",
+            mode: remote.mode ?? "grok",
           };
         }
       }
     } catch {
-      reply = local;
+      /* local already set */
     }
-    setThread((t) => [...t, { role: "nex", ...reply }]);
+    setThread((t) => [...t, { role: "nex", text: "", mode: reply.mode, citations: reply.citations }]);
+    await playTokens(reply.text, (soFar) => {
+      setThread((t) => {
+        const copy = [...t];
+        const last = copy.at(-1);
+        if (last?.role === "nex") copy[copy.length - 1] = { ...last, text: soFar };
+        return copy;
+      });
+      onCaption?.(soFar);
+    });
     setBusy(false);
     await vocalize(reply.text);
   }
@@ -187,9 +219,7 @@ export function NexPanel({
       setListening(false);
       moodTo("idle");
     };
-    rec.onend = () => {
-      setListening(false);
-    };
+    rec.onend = () => setListening(false);
     rec.start();
   }
 
@@ -199,7 +229,7 @@ export function NexPanel({
         <div>
           <p className="font-display text-2xl leading-none">Nex</p>
           <p className="mt-1 text-[11px] uppercase tracking-wide text-subtle">
-            {busy ? "Working" : research ? "Live research · web + X" : "Local companion"}
+            {busy ? "Working" : liveMind ? "Live mind when asked" : "Local precepts"}
           </p>
         </div>
         <span className="rounded-full border border-border px-2.5 py-1 text-[10px] uppercase tracking-wide text-subtle">
@@ -235,13 +265,6 @@ export function NexPanel({
         </button>
         <button
           type="button"
-          onClick={() => setResearch((v) => !v)}
-          className="h-8 rounded-full border border-border px-3 text-xs text-muted hover:text-fg"
-        >
-          {research ? "Local only" : "Live research"}
-        </button>
-        <button
-          type="button"
           onClick={() => {
             setThread([{ role: "nex", text: NEX_GREETING, mode: "local" }]);
             localStorage.removeItem(THREAD_KEY);
@@ -256,13 +279,7 @@ export function NexPanel({
         {thread.map((m, i) => (
           <div key={i} className={m.role === "you" ? "ml-8" : "mr-2"}>
             <p className="text-[10px] uppercase tracking-wide text-subtle">
-              {m.role === "you"
-                ? "Operator"
-                : m.mode === "research"
-                  ? "Nex · live"
-                  : m.mode === "grok"
-                    ? "Nex · live model"
-                    : "Nex · local"}
+              {m.role === "you" ? "Operator" : m.mode === "research" ? "Nex · live" : m.mode === "grok" ? "Nex · live mind" : "Nex"}
             </p>
             <p className="mt-1 whitespace-pre-wrap text-[15px] leading-relaxed text-fg/92">{m.text}</p>
             {m.citations?.length ? (
@@ -295,7 +312,7 @@ export function NexPanel({
               key={s}
               type="button"
               onClick={() => submit(s)}
-              className="min-h-8 rounded-full border border-border px-2.5 py-1 text-left text-[11px] text-muted hover:text-fg"
+              className="min-h-11 rounded-full border border-border px-3 py-1 text-left text-[11px] text-muted hover:text-fg"
             >
               {s}
             </button>
@@ -314,7 +331,7 @@ export function NexPanel({
               setQuery(e.target.value);
               if (e.target.value) moodTo("listen");
             }}
-            placeholder="Ask Nex — weather, time, tape, a lookup"
+            placeholder="Speak, Operator…"
             className="h-12 min-w-0 flex-1 rounded-md border border-border bg-bg px-3 text-sm text-fg placeholder:text-subtle focus:border-border-strong focus:outline-none"
             suppressHydrationWarning
           />
@@ -322,7 +339,7 @@ export function NexPanel({
             {listening ? "Listening" : "Speak"}
           </Button>
           <Button type="submit" size="lg" disabled={busy}>
-            Send
+            Transmit
           </Button>
         </form>
       </div>

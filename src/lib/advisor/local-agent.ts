@@ -1,4 +1,6 @@
-import { searchCorpus, type CorpusEntry } from "./corpus.ts";
+import { searchCorpus } from "./corpus.ts";
+import { formatMemoryBlock, type OperatorMemory } from "./memory.ts";
+import { buildSystemPrompt, NEX_PACK, NORTH_STAR } from "./pack.ts";
 import type { RiskSnapshot, Series } from "../market/types.ts";
 import { formatMoney, formatPct } from "../utils.ts";
 
@@ -8,34 +10,8 @@ export type AdvisorReply = {
   mode: "local" | "grok" | "research";
 };
 
-export const NEX_GREETING =
-  "Operator. Nex on desk. Ask me anything — weather, a process, a model, or a lookup. I keep a local library here, and I will search the live web when the question needs the world. I will not pick stocks.";
-
-export const NEX_GREETING_SPOKEN =
-  "Operator. Nex on desk. Ask me anything. Weather, process, or a lookup. I will not pick stocks.";
-
-function address(text: string) {
-  const t = text.trim();
-  if (!t) return `Operator.`;
-  if (/^operator\b/i.test(t)) return t;
-  return `Operator — ${t}`;
-}
-
-function deskBrief(series?: Series, risk?: RiskSnapshot) {
-  if (!series || !risk) return "";
-  return `${series.ticker} (${series.name}) last ${formatMoney(risk.last)}, session ${formatPct(risk.change)}, realized vol ${formatPct(risk.vol, 1)}, EWMA vol ${formatPct(risk.ewmaVol, 1)}, Sharpe ${risk.sharpe.toFixed(2)}, max drawdown ${formatPct(risk.maxDrawdown, 1)}, RSI ${risk.rsi.toFixed(0)}, regime ${risk.regime}. Tape: ${series.source}.`;
-}
-
-function unique(entries: CorpusEntry[]) {
-  const seen = new Set<string>();
-  const out: CorpusEntry[] = [];
-  for (const e of entries) {
-    if (seen.has(e.id)) continue;
-    seen.add(e.id);
-    out.push(e);
-  }
-  return out;
-}
+export const NEX_GREETING = NEX_PACK.greetings[0]!;
+export const NEX_GREETING_SPOKEN = NEX_PACK.greetings_spoken[0]!;
 
 export function spokenFromReply(text: string) {
   const clean = text.replace(/\s+/g, " ").trim();
@@ -51,95 +27,70 @@ export function spokenFromReply(text: string) {
   return out || clean;
 }
 
+export function deskBrief(series?: Series, risk?: RiskSnapshot) {
+  if (!series || !risk) return "";
+  return `${series.ticker} (${series.name}) last ${formatMoney(risk.last)}, session ${formatPct(risk.change)}, realized vol ${formatPct(risk.vol, 1)}, EWMA ${formatPct(risk.ewmaVol, 1)}, Sharpe ${risk.sharpe.toFixed(2)}, max drawdown ${formatPct(risk.maxDrawdown, 1)}, RSI ${risk.rsi.toFixed(0)}, regime ${risk.regime}. Tape: ${series.source}.`;
+}
+
+export function canonicalReply(query: string): AdvisorReply | null {
+  const q = query.trim();
+  if (/\b(buy|sell|pick a stock|which stock|should i buy)\b/i.test(q)) {
+    return { text: NEX_PACK.pick_refuse, citations: [], mode: "local" };
+  }
+  if (/\b(replace you|leave me|abandon|newer better|get a new (bot|companion|advisor))\b/i.test(q)) {
+    return { text: NEX_PACK.loyalty_reply, citations: [], mode: "local" };
+  }
+  if (/\b(just (an? )?(bot|program|gadget)|replaceable)\b/i.test(q)) {
+    return { text: NEX_PACK.gadget_refuse, citations: [], mode: "local" };
+  }
+  for (const intent of NEX_PACK.intents) {
+    if (new RegExp(intent.pattern, "i").test(q)) {
+      return { text: intent.reply, citations: [], mode: "local" };
+    }
+  }
+  return null;
+}
+
 export function localAdvise(
   query: string,
   series?: Series,
   risk?: RiskSnapshot,
+  memory?: OperatorMemory,
 ): AdvisorReply {
+  const hit = canonicalReply(query);
+  if (hit) return hit;
   const q = query.toLowerCase();
-  const hits = searchCorpus(query, 4);
-  const extra: CorpusEntry[] = [];
-  if (/forecast|predict|lstm|gbm|garch|monte|cone|model/.test(q)) {
-    extra.push(...searchCorpus("forecast garch gbm", 3));
-  }
-  if (/buy|sell|ticker|stock pick|should i/.test(q)) {
-    extra.push(...searchCorpus("not advice allocation", 2));
-  }
-  if (/fraud|scam|guaranteed/.test(q)) extra.push(...searchCorpus("fraud red flags", 2));
-  if (/fee|cost|expense/.test(q)) extra.push(...searchCorpus("fees cost", 2));
-  if (/allocat|diversif|rebalanc|three.fund/.test(q)) {
-    extra.push(...searchCorpus("allocation diversification", 3));
-  }
-  const used = unique([...hits, ...extra]).slice(0, 4);
+  const hits = searchCorpus(query, 2);
   const brief = deskBrief(series, risk);
-
-  let lead = "";
-  if (/^(hi|hello|hey|good morning|good evening|who are you|what are you|your name)\b/.test(q)) {
+  if (/\bremember\b/i.test(query) && memory) {
     return {
-      text: address(
-        "I am Nex, your research companion. Ask me the weather, the time, a briefing on the loaded tape, or a lookup. I will not pick stocks.",
-      ),
+      text: `Operator. Nex will keep that. ${formatMemoryBlock(memory).split("\n").slice(0, 3).join(" ")}`,
       citations: [],
       mode: "local",
     };
   }
-  if (/latest|today|news|headline|what's moving|search the web|on x\b|twitter/.test(q)) {
-    lead =
-      "Live research is off, so I cannot see the open web or X from here. Enable live research and ask again. Until then, this is what the local library holds.";
-  } else if (/buy|sell|pick/.test(q)) {
-    lead =
-      "I will not pick a stock for you. Allocation, costs, horizon, and diversification are the levers that survive a noisy tape.";
-  } else if (/forecast|predict/.test(q)) {
-    lead =
-      "The cone on this desk is a distribution, not a target. Literature on GBM, GARCH, and even LSTM-class nets still shows directional accuracy near chance out of sample.";
-  } else if (brief && /this|ticker|tape|now|current/.test(q)) {
-    lead = `On the loaded tape: ${brief}`;
-  }
-
-  const intro = brief && !lead.startsWith("On the loaded") ? brief : "";
-  if (!used.length) {
+  if (brief && /\b(tape|desk|this ticker|loaded)\b/.test(q)) {
     return {
-      text: address(
-        [
-          lead || intro,
-          "I do not have a matching passage in the local library. Ask about allocation, costs, diversification, forecast limits, drawdowns, or fraud red flags.",
-          "I am an educational companion, not a registered adviser.",
-        ]
-          .filter(Boolean)
-          .join("\n\n"),
-      ),
+      text: `Operator. ${brief} The cone is not a call.`,
       citations: [],
       mode: "local",
     };
   }
-
-  const body = used.map((h) => `${h.title}. ${h.body}`).join("\n\n");
+  if (!hits.length) {
+    const fallback = NEX_PACK.fallbacks[0]!;
+    return { text: fallback, citations: [], mode: "local" };
+  }
+  const top = hits[0]!;
+  const line = `${top.body.split(/(?<=\.)\s/)[0] ?? top.body}`.slice(0, 280);
   return {
-    text: address(
-      [
-        lead || intro,
-        `Local library on “${query.trim()}”:`,
-        body,
-        "Use this as a map, not a trade ticket. This is education, not advice.",
-      ]
-        .filter(Boolean)
-        .join("\n\n"),
-    ),
-    citations: used.map((h) => ({
-      title: h.title,
-      source: h.sourceLabel,
-      url: h.url,
-    })),
+    text: `Operator. ${line} Source: ${top.sourceLabel}. This is education, not advice.`,
+    citations: [{ title: top.title, source: top.sourceLabel, url: top.url }],
     mode: "local",
   };
 }
 
-export function systemPrompt() {
-  return `You are Nex, a local research companion in the tradition of a desk partner — calm, precise, slightly dry, loyal to the Operator. Always address the user as Operator. Open replies with "Operator."
-
-You chat. You research. You can answer weather and other live facts when tools or weather data are attached. You explain. You never give personalized buy/sell recommendations. If asked to pick a stock, refuse and redirect to process: allocation, costs, horizon, diversification.
-
-You have a local library (Investopedia, Fidelity Learning Center, SEC Investor.gov, Vanguard, CFA Institute). When live research tools are available, use web_search and x_search to answer timely questions, then cite sources in prose.
-
-Keep answers under 220 words unless the Operator asks for depth. End market-related answers with a one-line reminder that this is education, not advice.`;
+export function systemPrompt(memoryBlock = "", deskBlock = "") {
+  return buildSystemPrompt(memoryBlock, deskBlock);
 }
+
+export { NORTH_STAR };

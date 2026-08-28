@@ -4,36 +4,48 @@ import { NexPanel } from "@/components/advisor/nex-panel";
 import { DeskLab } from "@/components/desk/lab";
 import { NexPortrait, type Mood } from "@/components/nex/nex-portrait";
 import { Button } from "@/components/ui/button";
+import { loadMemory, rememberTickers, saveMemory } from "@/lib/advisor/memory";
 import { loadMarket } from "@/lib/market/api";
 import { riskSnapshot } from "@/lib/market/forecast";
 import type { Series } from "@/lib/market/types";
 import { formatMoney, formatPct } from "@/lib/utils";
 
-export const Route = createFileRoute("/")({ component: Companion });
+export const Route = createFileRoute("/")({ component: Habitat });
 
-function Companion() {
-  const [input, setInput] = useState("AAPL, MSFT");
+function Habitat() {
+  const [input, setInput] = useState("AAPL");
   const [series, setSeries] = useState<Series[]>([]);
-  const [note, setNote] = useState("Load a tape when you need the laboratory.");
+  const [note, setNote] = useState("Load a live tape.");
   const [busy, setBusy] = useState(false);
   const [active, setActive] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [booted, setBooted] = useState(false);
   const [desk, setDesk] = useState(false);
   const [mood, setMood] = useState<Mood>("idle");
+  const [caption, setCaption] = useState("");
 
   const current = series[active];
   const risk = useMemo(() => (current ? riskSnapshot(current) : undefined), [current]);
 
-  async function load() {
+  async function load(tickers = input) {
     setBusy(true);
     setError(null);
     try {
-      const res = await loadMarket({ data: { tickers: input } });
+      const res = await loadMarket({ data: { tickers } });
       setSeries(res.series);
       setActive(0);
       setNote(res.note);
-      setError(res.misses?.length && !res.series.length ? res.note : res.misses?.length ? res.note : null);
+      setError(res.series.length ? null : res.note);
+      const mem = rememberTickers(loadMemory(), tickers);
+      saveMemory(mem);
+      if (res.series[0]) {
+        const s = res.series[0];
+        const last = s.bars.at(-1)?.close;
+        setCaption(
+          last != null
+            ? `Tape loaded. ${s.ticker} last ${formatMoney(last)}. Live Nasdaq. The cone is not a call.`
+            : `Tape loaded. ${s.ticker}.`,
+        );
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load the tape.");
     } finally {
@@ -42,20 +54,29 @@ function Companion() {
   }
 
   useEffect(() => {
-    if (booted) return;
-    setBooted(true);
-    void load();
-  }, [booted]);
+    const saved = loadMemory().lastTickers || "AAPL";
+    setInput(saved);
+    void load(saved);
+  }, []);
 
   return (
-    <main className="min-h-dvh bg-bg lg:grid lg:grid-cols-[minmax(0,1fr)_min(42vw,28rem)]">
-      <section className="relative flex h-[48vh] flex-col lg:h-dvh">
-        <div className="absolute left-4 top-4 z-20 flex flex-wrap items-center gap-2 lg:left-6">
-          <Button variant="secondary" onClick={() => setDesk((v) => !v)}>
-            {desk ? "Close desk" : "Open desk"}
-          </Button>
+    <main className="flex min-h-dvh flex-col bg-bg">
+      <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_min(42vw,28rem)]">
+        <section className="relative hidden min-h-0 lg:block">
+          <NexPortrait mood={mood} caption={caption} className="h-full min-h-[28rem]" />
+        </section>
+        <aside className="flex min-h-[60vh] flex-col border-border bg-bg lg:h-auto lg:border-l">
+          <div className="h-40 shrink-0 lg:hidden">
+            <NexPortrait mood={mood} caption={caption} className="h-full" />
+          </div>
+          <NexPanel series={current} risk={risk} onMood={setMood} onCaption={setCaption} />
+        </aside>
+      </div>
+
+      <footer className="border-t border-border bg-bg-elevated">
+        <div className="flex flex-wrap items-center gap-2 px-4 py-3">
           <form
-            className="flex gap-2"
+            className="flex min-w-0 flex-1 gap-2"
             onSubmit={(e) => {
               e.preventDefault();
               void load();
@@ -65,51 +86,30 @@ function Companion() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="SEV, Aptera, AAPL"
-              className="h-11 w-44 rounded-md border border-border bg-bg/80 px-3 font-mono text-sm text-fg placeholder:text-subtle focus:border-border-strong focus:outline-none sm:w-56"
+              className="h-11 min-w-0 flex-1 rounded-md border border-border bg-bg px-3 font-mono text-sm text-fg placeholder:text-subtle focus:border-border-strong focus:outline-none sm:max-w-xs"
             />
             <Button type="submit" disabled={busy}>
-              {busy ? "Loading" : "Load"}
+              {busy ? "Loading" : "Load tape"}
             </Button>
           </form>
-        </div>
-        <NexPortrait mood={mood} className="min-h-0 flex-1" />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-bg via-bg/70 to-transparent px-5 pb-4 pt-16">
-          <p className="text-[11px] uppercase tracking-[0.28em] text-subtle">Research companion</p>
-          <h1 className="font-display text-4xl tracking-tight sm:text-5xl">Nex</h1>
           {current && risk ? (
-            <button
-              type="button"
-              onClick={() => setDesk(true)}
-              className="pointer-events-auto mt-3 flex flex-wrap items-center gap-3 rounded-md border border-border bg-bg/70 px-3 py-2 text-left text-xs text-muted"
-            >
-              <span className="font-mono text-fg">{current.ticker}</span>
-              <span className="max-w-[12rem] truncate">{current.name}</span>
-              <span className="font-mono tabular-nums">{formatMoney(risk.last)}</span>
+            <div className="flex flex-wrap items-center gap-3 font-mono text-xs tabular-nums text-muted">
+              <span className="text-fg">{current.ticker}</span>
+              <span>{formatMoney(risk.last)}</span>
               <span className={risk.change >= 0 ? "text-up" : "text-down"}>{formatPct(risk.change)}</span>
               <span className="uppercase tracking-wide">{risk.regime}</span>
-              <span className="text-subtle">{current.source === "live" ? "Live Nasdaq" : "Simulated"}</span>
-            </button>
-          ) : null}
-          {error ? <p className="pointer-events-auto mt-2 max-w-md text-sm text-down">{error}</p> : null}
-        </div>
-      </section>
-
-      <aside className="flex min-h-[52vh] flex-col border-t border-border bg-bg/92 lg:h-dvh lg:border-l lg:border-t-0">
-        <NexPanel series={current} risk={risk} onMood={setMood} />
-      </aside>
-
-      {desk ? (
-        <section className="fixed inset-0 z-30 bg-bg/80 backdrop-blur-sm lg:inset-y-4 lg:left-4 lg:right-[calc(min(42vw,28rem)+1rem)]">
-          <div className="flex h-full flex-col overflow-hidden rounded-none border border-border bg-bg-elevated lg:rounded-xl">
-            <div className="flex items-center justify-between border-b border-border px-4 py-3">
-              <div>
-                <p className="text-[11px] uppercase tracking-wide text-subtle">Laboratory</p>
-                <p className="font-display text-xl">Meridian Desk</p>
-              </div>
-              <Button variant="ghost" onClick={() => setDesk(false)}>
-                Close
-              </Button>
+              <span>{current.source === "live" ? "Live Nasdaq" : "Simulated"}</span>
             </div>
+          ) : (
+            <p className="text-xs text-subtle">{note}</p>
+          )}
+          <Button variant="secondary" onClick={() => setDesk((v) => !v)}>
+            {desk ? "Hide lab" : "Show lab"}
+          </Button>
+        </div>
+        {error ? <p className="px-4 pb-2 text-sm text-down">{error}</p> : null}
+        {desk ? (
+          <div className="max-h-[52vh] border-t border-border">
             <DeskLab
               series={series}
               input={input}
@@ -122,8 +122,8 @@ function Companion() {
               onLoad={() => void load()}
             />
           </div>
-        </section>
-      ) : null}
+        ) : null}
+      </footer>
     </main>
   );
 }

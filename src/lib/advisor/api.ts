@@ -5,6 +5,10 @@ import { listInstalledMacVoices, renderMacSpeech } from "./mac-say";
 import { extractResponse, type ChatTurn } from "./response";
 import { formatWeather, parsePlace } from "./weather";
 
+export const nexLive = createServerFn({ method: "GET" }).handler(async () => ({
+  live: Boolean(process.env.XAI_API_KEY),
+}));
+
 export const getWeather = createServerFn({ method: "POST" })
   .validator((input: { query: string }) => input)
   .handler(async ({ data }) => {
@@ -88,17 +92,24 @@ export const getWeather = createServerFn({ method: "POST" })
 
 export const askNex = createServerFn({ method: "POST" })
   .validator(
-    (input: { query: string; context: string; history?: ChatTurn[]; research?: boolean }) => input,
+    (input: {
+      query: string;
+      context: string;
+      history?: ChatTurn[];
+      research?: boolean;
+      memory?: string;
+    }) => input,
   )
   .handler(async ({ data }) => {
     const apiKey = process.env.XAI_API_KEY;
     if (!apiKey) return { ok: false as const, error: "offline" };
 
-    const hits = searchCorpus(data.query, 5);
+    const prompt = systemPrompt(data.memory ?? "", data.context);
+    const hits = searchCorpus(data.query, 4);
     const library =
       hits.length > 0
         ? hits.map((h) => `[${h.sourceLabel}] ${h.title}: ${h.body}`).join("\n")
-        : CORPUS.slice(0, 5)
+        : CORPUS.slice(0, 4)
             .map((h) => `[${h.sourceLabel}] ${h.title}: ${h.body}`)
             .join("\n");
 
@@ -118,7 +129,7 @@ export const askNex = createServerFn({ method: "POST" })
           model: "grok-4.5",
           max_output_tokens: 500,
           input: [
-            { role: "system", content: systemPrompt() },
+            { role: "system", content: prompt },
             ...prior,
             {
               role: "user",
@@ -152,10 +163,10 @@ export const askNex = createServerFn({ method: "POST" })
       },
       body: JSON.stringify({
         model: "grok-4.5",
-        max_tokens: 420,
-        temperature: 0.45,
+        max_tokens: 360,
+        temperature: 0.7,
         messages: [
-          { role: "system", content: systemPrompt() },
+          { role: "system", content: prompt },
           ...prior,
           {
             role: "user",
